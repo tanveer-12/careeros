@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: careeros_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: careeros
+    ports:
+      - "5432:5432"
+    volumes:
+      - careeros_pgdata:/var/lib/postgresql/data
+
+volumes:
+  careeros_pgdata:
