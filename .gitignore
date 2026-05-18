@@ -1,4 +1,5 @@
 .env
+config/.env
 docs/agents/
 __pycache__/
 .venv/

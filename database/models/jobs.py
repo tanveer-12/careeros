@@ -28,6 +28,10 @@ class JobSource(enum.Enum):
     greenhouse = "greenhouse"
     lever = "lever"
     ashby = "ashby"
+    simplify = "simplify"
+    yc = "yc"
+    jobright = "jobright"
+    hiringcafe = "hiringcafe"
     manual = "manual"
 
 
