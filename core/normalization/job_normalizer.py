@@ -1,23 +1,21 @@
 """
-Hybrid async normalizer: rule-based field extraction + LLM for domain/seniority/skills.
+Normalizer: rule-based field extraction for all sources.
 
-Rule-based (free, instant):  work_location · employment_type · salary · HTML strip
-LLM-based (Groq during dev): domain · seniority · skills
+HiringCafe jobs use pre-enriched fields from the API response directly.
+All other sources (Simplify) use fast keyword-based extraction.
+No external API calls, no rate limits, no cost.
 
-Provider is controlled entirely by LLM_PROVIDER + LLM_MODEL env vars.
-build_llm_client() is the only place provider-specific logic lives.
+Rule-based: work_location · employment_type · salary · HTML strip · seniority · domain
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-import openai
 from selectolax.parser import HTMLParser
 
 from config.settings import settings
@@ -37,96 +35,8 @@ _SALARY_RE = re.compile(
 _CURRENCY_SYMBOL_MAP = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY", "₹": "INR"}
 _CURRENCY_CODE_RE = re.compile(r"\b(USD|EUR|GBP|CAD|AUD)\b", re.IGNORECASE)
 
-# Full domain taxonomy that the LLM must map to.
-_DOMAIN_TAXONOMY = """
-Technology: software engineering, backend engineering, frontend engineering,
-  mobile engineering, full stack engineering, platform engineering,
-  infrastructure engineering, data engineering, machine learning engineering,
-  ai research, data science, analytics engineering, business intelligence,
-  security engineering, embedded systems, firmware engineering,
-  robotics engineering, computer vision, nlp engineering,
-  developer relations, technical program management, qa engineering
 
-Physical Engineering: mechanical engineering, electrical engineering, civil engineering,
-  structural engineering, aerospace engineering, manufacturing engineering,
-  industrial engineering, systems engineering, hardware engineering,
-  process engineering, materials engineering, controls engineering,
-  automation engineering, chemical engineering
-
-Biomedical & Life Sciences: biomedical engineering, biochemistry, pharmaceutical,
-  clinical research, regulatory affairs, medical devices, genomics, bioinformatics,
-  lab sciences, research science, applied research, environmental science
-
-Product & Design: product management, technical product management, ux design,
-  product design, visual design, brand design, motion design, industrial design,
-  user research, content design
-
-Finance & Accounting: investment banking, private equity, venture capital,
-  asset management, hedge fund, equity research, financial analysis,
-  corporate finance, accounting, audit, tax, risk management, trading,
-  quantitative finance, financial technology, insurance, actuarial
-
-Business & Strategy: strategy, management consulting, business operations,
-  revenue operations, program management, project management, chief of staff,
-  supply chain, logistics, procurement, real estate
-
-Sales & Growth: sales, enterprise sales, sales engineering, business development,
-  partnerships, growth, customer success, account management
-
-Marketing & Communications: marketing, product marketing, demand generation,
-  content marketing, brand, communications, public relations, social media, seo
-
-People & Talent: human resources, recruiting, talent acquisition, people operations,
-  compensation and benefits, learning and development
-
-Legal & Compliance: legal, compliance, privacy, intellectual property, contracts
-
-Healthcare & Clinical: healthcare administration, clinical operations, nursing,
-  physician, pharmacy, public health, health informatics, medical writing
-
-Education: education, curriculum design, instructional design, edtech
-
-Government & Nonprofit: government, policy, nonprofit, social impact
-
-Fallback: other
-""".strip()
-
-_SYSTEM_PROMPT = f"""You are a job posting classifier. Extract structured metadata from job postings.
-
-Return ONLY valid JSON — no markdown, no explanation, no code blocks.
-
-JSON schema:
-{{"domain": "<exact value from taxonomy>", "seniority": "<intern|entry|mid|senior|staff|principal|executive>", "skills": ["skill1", ...]}}
-
-Domain taxonomy:
-{_DOMAIN_TAXONOMY}
-
-Seniority guide:
-  intern     = internship, co-op, student
-  entry      = 0-2 years, analyst, associate, junior, new grad
-  mid        = 2-5 years, no explicit seniority modifier
-  senior     = senior, sr., lead (IC role)
-  staff      = staff-level IC or small-team manager
-  principal  = principal, director, senior manager
-  executive  = VP, SVP, C-suite, Partner, Managing Director
-  Note: "VP" at a bank is staff/principal (IC), not executive.
-        "Associate" in consulting is entry, not mid.
-
-Skills rules:
-  - Max 15 skills
-  - Concrete tools, languages, frameworks, methodologies only
-  - No soft skills (no "communication", "teamwork", "leadership")
-  - Domain-appropriate: DCF for finance, SolidWorks for mechanical, etc."""
-
-
-# ── Dataclasses ───────────────────────────────────────────────────────────────
-
-@dataclass
-class LLMExtraction:
-    domain: str
-    seniority: str
-    skills: list[str]
-
+# ── Dataclass ─────────────────────────────────────────────────────────────────
 
 @dataclass
 class NormalizedJob:
@@ -147,31 +57,6 @@ class NormalizedJob:
     salary_min: int | None = None
     salary_max: int | None = None
     salary_currency: str | None = None
-
-
-# ── LLM client factory ────────────────────────────────────────────────────────
-
-def build_llm_client():
-    """
-    Returns an async LLM client for the configured provider.
-    Groq and Ollama use the openai-compatible SDK.
-    Anthropic uses its own SDK.
-    """
-    provider = settings.llm_provider
-    if provider == "groq":
-        return openai.AsyncOpenAI(
-            base_url=settings.groq_base_url,
-            api_key=settings.groq_api_key,
-        )
-    if provider == "ollama":
-        return openai.AsyncOpenAI(
-            base_url="http://localhost:11434/v1",
-            api_key="ollama",
-        )
-    if provider == "anthropic":
-        import anthropic  # optional dependency; only needed when provider=anthropic
-        return anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    raise ValueError(f"Unknown LLM provider: {provider!r}. Must be groq | ollama | anthropic")
 
 
 # ── Rule-based helpers ────────────────────────────────────────────────────────
@@ -244,158 +129,178 @@ def _extract_salary(text: str | None) -> tuple[int | None, int | None, str | Non
     return salary_min, salary_max, currency
 
 
-# ── Source-specific payload extraction ────────────────────────────────────────
+# ── Seniority + domain keyword inference ──────────────────────────────────────
 
-def _extract_payload(
-    raw: RawJob,
-) -> tuple[str | None, str | None, str | None, str | None]:
-    """Returns (title, company, location, raw_description) for any source."""
-    p = raw.raw_payload
-    s = raw.source
+# Checked in priority order — first match wins.
+_SENIORITY_RULES: list[tuple[list[str], str]] = [
+    (["intern", "internship"], "intern"),
+    (["new grad", "entry", "junior", "jr"], "entry"),
+    (["senior", "sr", "lead"], "senior"),
+    (["staff"], "staff"),
+    (["principal"], "principal"),
+    (["director", "vp", "head", "chief", "cto"], "executive"),
+]
 
-    if s == "greenhouse":
-        title    = p.get("title")
-        company  = _slug_to_company(raw.company_slug)
-        location = (p.get("location") or {}).get("name")
-        desc     = p.get("content")
-    elif s == "lever":
-        title    = p.get("text")
-        company  = _slug_to_company(raw.company_slug)
-        location = (p.get("categories") or {}).get("location")
-        desc     = p.get("descriptionPlain") or p.get("description")
-    elif s == "ashby":
-        title    = p.get("title")
-        company  = _slug_to_company(raw.company_slug)
-        location = p.get("locationName")
-        desc     = p.get("descriptionHtml")
-    elif s == "simplify":
-        title    = p.get("role")
-        company  = p.get("company")
-        location = p.get("location")
-        desc     = None
-    elif s == "yc":
-        title    = p.get("title")
-        company  = p.get("companyName")
-        location = p.get("location")
-        desc     = p.get("description")
-    elif s == "jobright":
-        job      = p.get("job") or {}
-        comp     = p.get("company") or {}
-        title    = job.get("jobTitle")
-        company  = comp.get("companyName")
-        location = job.get("jobLocation")
-        desc     = None
-    elif s == "hiringcafe":
-        info     = p.get("job_information") or {}
-        proc     = p.get("v5_processed_job_data") or {}
-        title    = info.get("title")
-        company  = proc.get("company_name")
-        location = proc.get("formatted_workplace_location")
-        desc     = None
-    else:
-        title    = p.get("title")
-        company  = _slug_to_company(raw.company_slug)
-        location = None
-        desc     = None
+_DOMAIN_RULES: list[tuple[list[str], str]] = [
+    # software
+    (["software", "backend", "frontend", "fullstack", "full stack",
+      "devops", "sre", "platform", "web developer", "web engineer",
+      "cloud", "mobile", "ios", "android", "react", "python",
+      "java ", "golang", "ruby", "php", "typescript", ".net",
+      "firmware", "systems engineer", "infrastructure"], "software engineering"),
+    # data & ai
+    (["data", "analytics", "ml ", "machine learning", "ai ", "scientist",
+      "deep learning", "nlp", "computer vision", "data engineer",
+      "business intelligence", "bi ", "etl", "spark", "hadoop"], "data & ai"),
+    # mechanical / hardware engineering
+    (["automation", "controls engineer", "optical", "industrial mechanic",
+      "maintenance", "equipment engineer", "systems lead",
+      "mechanical", "manufacturing", "embedded", "hardware",
+      "electrical", "electronics", "robotics", "aerospace",
+      "automotive", "civil", "structural", "materials", "cad"], "engineering"),
+    # finance
+    (["wealth management", "financial advisor", "finance", "accounting",
+      "banker", "banking", "investment", "trading", "quant",
+      "actuar", "tax ", "audit", "controller", "treasury", "payroll"], "finance"),
+    # healthcare
+    (["veterinary", "nurse", "rn ", "lvn", "physician", "psychiatrist",
+      "pediatric", "doctor", "therapist", "radiolog", "patholog",
+      "dentist", "pharmacist", "health", "medical", "clinical",
+      "biotech", "pharma", "life science", "healthcare"], "healthcare"),
+    # product
+    (["product manager", "product owner", "pm ", " pm,",
+      "program manager", "scrum", "agile coach"], "product"),
+    # design
+    (["design", "ux", "ui ", "u/x", "user experience",
+      "user interface", "graphic", "visual design",
+      "brand design", "motion design"], "design"),
+    # marketing
+    (["marketing", "growth", "seo", "content", "copywriter",
+      "social media", "brand manager", "campaign", "demand gen",
+      "performance market"], "marketing"),
+    # sales
+    (["sales", "account executive", "account manager",
+      "business development", "bdr", "sdr", "revenue",
+      "customer success"], "sales"),
+    # operations
+    (["operations", "supply chain", "logistics", "warehouse",
+      "procurement", "facilities", "office manager",
+      "document control", "strategy & ops", "delivery"], "operations"),
+    # legal / compliance
+    (["legal", "counsel", "attorney", "lawyer", "compliance",
+      "paralegal", "regulatory"], "legal"),
+    # hr / people
+    (["recruiter", "recruiting", "talent", "human resources",
+      "hr ", "people ops", "compensation", "benefits"], "hr"),
+    # customer support
+    (["customer support", "customer service", "help desk",
+      "technical support", "support engineer", "success manager"], "support"),
+    # hospitality / retail / service
+    (["host", "hostess", "shift lead", "resort", "hotel",
+      "restaurant", "barista", "cashier", "retail",
+      "store associate", "customer service"], "hospitality & retail"),
+    # art / creative
+    (["art direction", "creative director", "animator",
+      "illustrator", "photographer", "videographer",
+      "content creator", "writer", "editor"], "creative"),
+    # management
+    (["manager", "director", "head of", "vp ", "vice president",
+      "chief", "cto", "cfo", "coo", "ceo", "lead "], "management"),
+]
 
-    return title or None, company or None, location or None, desc or None
+
+def _infer_seniority(title: str | None) -> str:
+    if not title:
+        return "mid"
+    lower = title.lower()
+    for keywords, level in _SENIORITY_RULES:
+        if any(kw in lower for kw in keywords):
+            return level
+    return "mid"
 
 
-# ── LLM extraction ────────────────────────────────────────────────────────────
-
-_FALLBACK_EXTRACTION = LLMExtraction(domain="other", seniority="mid", skills=[])
-
-_VALID_SENIORITIES = {"intern", "entry", "mid", "senior", "staff", "principal", "executive"}
-
-
-def _parse_llm_json(content: str) -> dict:
-    content = content.strip()
-    # Strip accidental markdown code fences
-    content = re.sub(r"^```\w*\s*", "", content)
-    content = re.sub(r"\s*```$", "", content)
-    # Extract first JSON object if there's surrounding text
-    m = re.search(r"\{.*\}", content, re.DOTALL)
-    return json.loads(m.group() if m else content)
+def _infer_domain(title: str | None) -> str:
+    if not title:
+        return "other"
+    lower = title.lower()
+    for keywords, domain in _DOMAIN_RULES:
+        if any(kw in lower for kw in keywords):
+            return domain
+    return "other"
 
 
 # ── Main normalizer ───────────────────────────────────────────────────────────
 
 class JobNormalizer:
 
-    def __init__(self, client=None) -> None:
-        self._client = client or build_llm_client()
-        self._llm_lock = asyncio.Lock()
-        self._last_llm_call_at = 0.0
-
-    async def _extract_with_llm(
-        self, title: str, description: str
-    ) -> LLMExtraction:
-        await self._wait_for_llm_slot()
-        description = description[: settings.llm_description_char_limit]
-        user_msg = f"Title: {title}\n\nDescription:\n{description}"
-        try:
-            client = self._client
-            # Detect anthropic SDK by checking for messages.create signature
-            if hasattr(client, "messages") and not hasattr(client, "chat"):
-                response = await client.messages.create(
-                    model=settings.llm_model,
-                    max_tokens=settings.llm_max_output_tokens,
-                    system=_SYSTEM_PROMPT,
-                    messages=[{"role": "user", "content": user_msg}],
-                )
-                content = response.content[0].text
-            else:
-                response = await client.chat.completions.create(
-                    model=settings.llm_model,
-                    messages=[
-                        {"role": "system", "content": _SYSTEM_PROMPT},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    temperature=0,
-                    max_tokens=settings.llm_max_output_tokens,
-                )
-                content = response.choices[0].message.content
-
-            data = _parse_llm_json(content)
-            return LLMExtraction(
-                domain=str(data.get("domain", "other")).lower(),
-                seniority=(
-                    str(data.get("seniority", "mid")).lower()
-                    if data.get("seniority", "mid").lower() in _VALID_SENIORITIES
-                    else "mid"
-                ),
-                skills=[str(s) for s in (data.get("skills") or [])[:15]],
-            )
-        except Exception as exc:
-            _log.error("LLM extraction failed for title=%r: %s", title, exc)
-            return _FALLBACK_EXTRACTION
-        
-    async def _wait_for_llm_slot(self) -> None:
-        delay = settings.llm_request_delay_seconds
-        if delay <= 0:
-            return
-
-        async with self._llm_lock:
-            now = asyncio.get_running_loop().time()
-            elapsed = now - self._last_llm_call_at
-            wait_for = delay - elapsed
-
-            if wait_for > 0:
-                await asyncio.sleep(wait_for)
-
-            self._last_llm_call_at = asyncio.get_running_loop().time()
-
-
     async def normalize(self, raw: RawJob) -> NormalizedJob:
-        title, company, location, raw_desc = _extract_payload(raw)
-        description = _strip_html(raw_desc or "")
-        text_for_rules = description or ""
+        p = raw.raw_payload
 
-        work_location   = _infer_work_location(location)
-        employment_type = _infer_employment_type(title)
-        salary_min, salary_max, salary_currency = _extract_salary(text_for_rules)
+        if raw.source == "hiringcafe":
+            v5   = p.get("v5_processed_job_data") or {}
+            enr  = p.get("enriched_company_data") or {}
+            info = p.get("job_information") or {}
 
-        llm = await self._extract_with_llm(title or "", description or "")
+            title          = info.get("title") or None
+            company        = v5.get("company_name") or None
+            location       = v5.get("formatted_workplace_location") or None
+            seniority      = v5.get("seniority_level") or None
+            workplace_type = v5.get("workplace_type") or None
+            skills         = list(v5.get("technical_tools") or [])
+            salary_min     = v5.get("yearly_min_compensation")
+            salary_max     = v5.get("yearly_max_compensation")
+            industries     = enr.get("industries") or []
+            domain         = industries[0] if industries else "other"
+
+            work_location   = _infer_work_location(workplace_type or location)
+            employment_type = _infer_employment_type(title)
+            description     = None
+            salary_currency = "USD" if (salary_min is not None or salary_max is not None) else None
+
+        else:
+            # defaults — may be overridden per source below
+            raw_desc  = None
+            domain    = None
+            seniority = None
+
+            if raw.source == "simplify":
+                title    = p.get("role") or None
+                company  = p.get("company") or None
+                location = p.get("location") or None
+
+            elif raw.source == "themuse":
+                title    = p.get("title") or None
+                company  = p.get("company") or None
+                location = p.get("location") or None
+
+            elif raw.source == "jobicy":
+                title     = p.get("title") or None
+                company   = p.get("company") or None
+                location  = p.get("location") or None
+                domain    = (p.get("domain") or "other").lower()    # pre-set by source
+                seniority = (p.get("seniority") or "mid").lower()   # pre-set by source
+
+            elif raw.source == "devitjobs":
+                title    = p.get("title") or None
+                company  = p.get("company") or None
+                location = p.get("location") or None
+
+            else:
+                title    = p.get("title") or None
+                company  = _slug_to_company(getattr(raw, "company_slug", None))
+                location = None
+
+            description     = _strip_html(raw_desc or "")
+            skills          = []
+            work_location   = _infer_work_location(location)
+            employment_type = _infer_employment_type(title)
+            salary_min, salary_max, salary_currency = _extract_salary(description)
+
+            # fall back to inference if source didn't pre-set these
+            if seniority is None:
+                seniority = _infer_seniority(title)
+            if domain is None:
+                domain = _infer_domain(title)
 
         return NormalizedJob(
             source=raw.source,
@@ -409,16 +314,16 @@ class JobNormalizer:
             work_location=work_location,
             employment_type=employment_type,
             description=description,
-            skills=llm.skills,
-            domain=llm.domain,
-            seniority=llm.seniority,
+            skills=skills,
+            domain=domain,
+            seniority=seniority,
             salary_min=salary_min,
             salary_max=salary_max,
             salary_currency=salary_currency,
         )
 
     async def normalize_batch(self, raws: list[RawJob]) -> list[NormalizedJob]:
-        sem = asyncio.Semaphore(settings.llm_max_concurrency)
+        sem = asyncio.Semaphore(settings.normalizer_max_concurrency)
 
         async def _guarded(raw: RawJob) -> NormalizedJob | None:
             async with sem:

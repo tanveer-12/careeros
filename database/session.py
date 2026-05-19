@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-_url = os.environ.get("DATABASE_URL")
+from config.settings import settings
+_url = settings.database_url
 if not _url:
     raise RuntimeError(
         "DATABASE_URL environment variable is not set. "

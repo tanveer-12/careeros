@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, String, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,7 +42,9 @@ class Resume(Base):
     raw_text: Mapped[str] = mapped_column(Text)
     parsed_skills: Mapped[list[str]] = mapped_column(ARRAY(String), server_default=text("'{}'"))
     parsed_titles: Mapped[list[str]] = mapped_column(ARRAY(String), server_default=text("'{}'"))
-    parsed_years_exp: Mapped[Optional[int]] = mapped_column(Integer, default=None)
+    parsed_years_exp: Mapped[Optional[float]] = mapped_column(Float, default=None)
+
+    source: Mapped[str] = mapped_column(String(50), server_default=text("'cli'"))
 
     is_embedded: Mapped[bool] = mapped_column(Boolean, server_default=text("FALSE"))
 

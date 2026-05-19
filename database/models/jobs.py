@@ -25,14 +25,16 @@ from database.base import Base
 
 
 class JobSource(enum.Enum):
+    simplify   = "simplify"
+    themuse    = "themuse"
+    jobicy     = "jobicy"
+    devitjobs  = "devitjobs"
     greenhouse = "greenhouse"
-    lever = "lever"
-    ashby = "ashby"
-    simplify = "simplify"
-    yc = "yc"
-    jobright = "jobright"
-    hiringcafe = "hiringcafe"
-    manual = "manual"
+    lever      = "lever"
+    ashby      = "ashby"
+    yc         = "yc"
+    jobright   = "jobright"
+    manual     = "manual"
 
 
 class JobStatus(enum.Enum):

@@ -261,54 +261,6 @@ Change _build_scraper(source) to:
       raise typer.Exit(1)
   return ATS_REGISTRY[source]()
 
----
-
-## Task 3.5 — core/collectors/discovery.py (new file)
-
-**File to create:** `core/collectors/discovery.py`
-
-**What it does:**
-Fetches ATS public sitemaps and returns a domain-balanced sample
-of company slugs. This is how CareerOS discovers companies without
-any hardcoded lists.
-
-**SitemapDiscovery class:**
-
-Method: async get_slugs(ats: str, limit: int, shuffle: bool) -> list[str]
-  - Fetch sitemap.xml URL from settings (greenhouse_sitemap, etc.)
-  - Parse XML: extract all <loc> URL values
-  - Extract slug from each URL:
-      "https://boards.greenhouse.io/stripe" → "stripe"
-      "https://jobs.lever.co/airtable" → "airtable"
-      "https://jobs.ashbyhq.com/linear" → "linear"
-  - Apply domain-balanced sampling if settings.domain_balanced_sampling:
-      Use heuristic keyword signals on the slug/URL string
-      to categorize into: tech, finance, health, engineering,
-      consulting, other
-      Sample proportionally: 40% tech, 15% finance, 15% health,
-      10% engineering, 10% consulting, 10% other
-      These signals are simple string contains checks on slug text,
-      not LLM — fast and free
-      Example signals:
-        finance: bank, capital, financial, invest, fund, trading
-        health: health, medical, clinic, pharma, bio, hospital
-        engineering: robotics, aerospace, auto, energy, defense
-        consulting: consulting, advisory, partners, group
-  - Shuffle the final list before truncating to limit
-  - Return up to limit slugs
-  - On any network error: log warning, return empty list
-
-Method: async discover_all() -> dict[str, list[str]]
-  - Calls get_slugs for each ATS in settings
-  - Returns: {"greenhouse": [...], "lever": [...], "ashby": [...]}
-
-**Error handling:**
-Sitemaps can be slow or occasionally unavailable.
-Use httpx with a 30 second timeout.
-Retry once on failure. If both fail, return empty list and log.
-Never crash the pipeline because a sitemap was unavailable.
-
----
 
 ## Task 3.6 — core/collectors/feed_scrapers.py (new file)
 
@@ -318,7 +270,7 @@ Never crash the pipeline because a sitemap was unavailable.
 All feed-based scrapers that aggregate across thousands of companies
 without needing company slugs. One file, all feeds, one registry.
 
-**Three scrapers to build:**
+**Two scrapers to build:**
 
 SimplifyScraper:
   - Source: GitHub raw markdown (simplify_url from settings)
@@ -332,34 +284,22 @@ SimplifyScraper:
   - raw_payload: {"company": ..., "role": ..., "location": ..., "age": ...}
   - scrape_all() is the primary method, scrape_company() raises NotImplementedError
 
-YCScraper:
-  - Source: ycombinator.com/jobs (yc_url from settings)
-  - Page embeds job data as JSON in the HTML source
-  - Find marker: '"jobPostings":' in the raw HTML
-  - Use json.JSONDecoder().raw_decode() starting at that marker
-  - Each item has: companyName, title, url, applyUrl, location, createdAt
-  - createdAt is a relative string like "3 hours ago", "2 days ago"
-  - Parse relative age → absolute datetime → apply 24h filter
-  - external_id: item["id"] if present, else slugify company+title
-  - source_url: full YC URL (prepend https://www.ycombinator.com if relative)
-  - raw_payload: full item dict
+HiringCafeScraper:
+  - Source: hiring.cafe (hiringcafe_feed_url from settings)
+  - Page embeds job data as JSON in script#__NEXT_DATA__ tag
+  - Parse HTML with selectolax, find that script tag, json.loads()
+  - Navigate to: data["props"]["pageProps"]["ssrHits"]
+  - Also read ssrTotalCount and ssrPageSize to determine pagination
+  - Paginate up to 40 pages; use Semaphore(3) for concurrent page fetches
+  - Freshness filter: v5_processed_job_data["estimated_publish_date_millis"] (unix ms)
+  - external_id: str(job["objectID"])
+  - source_url: job["apply_url"]
+  - raw_payload: full job dict (includes v5_processed_job_data, enriched_company_data,
+    job_information — these are used directly by the normalizer)
   - scrape_all() primary, scrape_company() raises NotImplementedError
+  - User-Agent header required: "Mozilla/5.0 (compatible; CareerOS/1.0)"
 
-JobrightScraper:
-  - Source: jobright.ai/jobs/new-grad (jobright_url from settings)
-  - Next.js app: data is in  "script<id="__NEXT_DATA__">" tag
-  - Parse HTML with selectolax, find that script tag
-  - Parse script content as JSON
-  - Navigate to: data["props"]["pageProps"]["jobList"]
-  - Each row has jobResult and companyResult nested dicts
-  - job fields: jobTitle, jobLocation, url, applyLink, publishTime
-  - company fields: companyName
-  - publishTime is ISO format string → parse → apply 24h filter
-  - external_id: str(result["jobId"]) if present
-  - raw_payload: {"job": result dict, "company": company_result dict}
-  - scrape_all() primary, scrape_company() raises NotImplementedError
-
-**All three scrapers:**
+**Both scrapers:**
 - Extend BaseScraper
 - Implement async context manager (manages httpx client lifecycle)
 - Use tenacity retry: max 3 attempts, exponential backoff, on timeout + 5xx
@@ -368,75 +308,94 @@ JobrightScraper:
 - scrape_companies() calls scrape_all() (ignores slug list for feeds)
 
 **FEED_REGISTRY dict at bottom:**
-Maps "simplify", "yc", "jobright" to their classes.
+Maps "simplify", "hiringcafe" to their classes.
 
 ---
 
 ## Task 3.7 — core/normalization/job_normalizer.py (rewrite)
 
-**File to rewrite:** `core/normalization/job_normalizer.py`
+File to rewrite: core/normalization/job_normalizer.py
+What changes: LLM extraction is removed entirely. Normalization is split by source — HiringCafe jobs use pre-enriched fields directly from the API response; all other sources use fast rule-based extraction. No external API calls, no rate limits, no cost.
+Keep from existing file:
 
-**This is the most significant rewrite in Phase 3.**
-The normalizer becomes async and domain-agnostic.
+NormalizedJob dataclass (same fields, no changes)
+HTML cleaning logic using selectolax
+work_location rule-based extraction
+employment_type rule-based extraction
+salary regex extraction
 
-**Keep from existing file:**
-- NormalizedJob dataclass (same fields, no changes)
-- HTML cleaning logic using selectolax
-- work_location rule-based extraction
-- employment_type rule-based extraction
-- salary regex extraction
+Remove from existing file:
 
-**Remove from existing file:**
-- All hardcoded SKILL_KEYWORDS list
-- All hardcoded domain keyword matching
-- All hardcoded seniority keyword matching
-These are replaced by LLM extraction.
+All hardcoded SKILL_KEYWORDS list
+All hardcoded domain keyword matching
+All hardcoded seniority keyword matching
+All LLM client code, LLMExtraction dataclass, _extract_with_llm()
 
-**Add: LLM client factory**
-A module-level function build_llm_client() that reads settings and
-returns an openai.AsyncOpenAI client configured for the right provider:
-  - groq: base_url="https://api.groq.com/openai/v1", api_key=settings.groq_api_key
-  - ollama: base_url="http://localhost:11434/v1", api_key="ollama"
-  - anthropic: use anthropic.AsyncAnthropic() (different SDK)
-This factory is the only place provider-specific logic lives.
 
-**Add: LLMExtraction dataclass**
-  domain: str
-  seniority: str
-  skills: list[str]
+Add: HiringCafe direct field mapping
+HiringCafe's raw_payload is pre-enriched. Map fields directly — no inference needed:
+pythonv5   = raw.raw_payload.get("v5_processed_job_data") or {}
+enr  = raw.raw_payload.get("enriched_company_data") or {}
+info = raw.raw_payload.get("job_information") or {}
 
-**Add: async _extract_with_llm(title, description) -> LLMExtraction**
-Calls the LLM with a structured extraction prompt.
-Prompt instructs the model to return JSON only, no markdown.
-JSON shape: {"domain": "...", "seniority": "...", "skills": [...]}
-Domain must be from the full taxonomy (listed in system_design.md Section 6).
-Seniority must be one of: intern, entry, mid, senior, staff, principal, executive.
-Skills: max 15, domain-specific, concrete tools and methodologies,
-no soft skills like "communication" or "teamwork".
-On JSON parse failure: return LLMExtraction(domain="other", seniority="mid", skills=[])
-Never raise from this method.
+title          = info.get("title", "")
+company        = v5.get("company_name", "")
+location       = v5.get("formatted_workplace_location", "")
+seniority      = v5.get("seniority_level", "")          # already normalized string
+workplace_type = v5.get("workplace_type", "")            # remote / hybrid / onsite
+skills         = v5.get("technical_tools") or []         # list[str], up to 15
+salary_min     = v5.get("yearly_min_compensation")       # int or null
+salary_max     = v5.get("yearly_max_compensation")       # int or null
+industries     = enr.get("industries") or []
+domain         = industries[0] if industries else "other"
+company_size   = enr.get("nb_employees")                 # int or null
+funding_stage  = enr.get("latest_funding_type", "")
 
-**Add: async normalize(raw: RawJob) -> NormalizedJob**
-  1. Extract title, company, location from raw_payload using source-specific mapping:
-       greenhouse: title=job["title"], location=job["location"]["name"]
-       lever:      title=job["text"], location=job["categories"]["location"]
-       ashby:      title=job["title"], location=job["locationName"]
-       simplify:   title=raw_payload["role"], company=raw_payload["company"]
-       yc:         title=raw_payload["title"], company=raw_payload["companyName"]
-       jobright:   title=raw_payload["job"]["jobTitle"]
-  2. Strip HTML from description
-  3. Run rule-based extraction (work_location, employment_type, salary)
-  4. Call _extract_with_llm(title, cleaned_description)
-  5. Return NormalizedJob with all fields
+Add: rule-based extraction for non-HiringCafe sources
+Used for Simplify, YC, Jobright (low volume, no pre-enriched data).
+Source-specific title/company/location extraction:
+pythonsimplify:  title=raw_payload["role"],          company=raw_payload["company"]
+yc:        title=raw_payload["title"],         company=raw_payload["companyName"]
+jobright:  title=raw_payload["job"]["jobTitle"], company=raw_payload["company"]["companyName"]
+Seniority — keyword match on title (in priority order):
+intern, internship              → "intern"
+new grad, entry, junior, jr     → "entry"
+senior, sr, lead                → "senior"
+staff                           → "staff"
+principal                       → "principal"
+director, vp, head, chief, cto  → "executive"
+(no match)                      → "mid"
+Domain — keyword match on title:
+software, backend, frontend, fullstack, devops, sre, platform  → "software engineering"
+data, analytics, ml, machine learning, ai, scientist           → "data & ai"
+mechanical, manufacturing, embedded, hardware, electrical      → "engineering"
+finance, accounting, banking, investment, trading              → "finance"
+health, medical, clinical, biotech, pharma, nursing            → "healthcare"
+product, pm, program manager                                   → "product"
+design, ux, ui                                                 → "design"
+marketing, growth, seo, content                                → "marketing"
+(no match)                                                     → "other"
+Skills — not extracted for non-HiringCafe sources. Set to []. Skills data is only reliable when it comes from a structured ATS field, not free-text titles.
 
-**Add: async normalize_batch(raws: list[RawJob]) -> list[NormalizedJob]**
-  - Run normalize() concurrently with asyncio.gather
-  - Gate with asyncio.Semaphore(settings.normalizer_max_concurrency)
-  - On individual failure: log error, append NormalizedJob with null
-    domain/seniority/skills, continue — never stop the batch
-  - Return list of NormalizedJobs in same order as input
+Add: async normalize(raw: RawJob) -> NormalizedJob
 
-**normalize() is now async. Pipeline must await it.**
+Branch on raw.source:
+
+"hiringcafe" → use HiringCafe direct mapping above
+all others → use rule-based extraction above
+
+
+Run existing rule-based extractors for work_location, employment_type, salary on all sources (these are reliable from any free-text field)
+Return NormalizedJob with all fields populated
+
+Add: async normalize_batch(raws: list[RawJob]) -> list[NormalizedJob]
+
+Run normalize() concurrently with asyncio.gather
+Gate with asyncio.Semaphore(settings.normalizer_max_concurrency)
+On individual failure: log error, append NormalizedJob with null domain/seniority/skills, continue — never stop the batch
+Return list in same order as input
+
+normalize() is async. Pipeline must await it.
 
 ---
 
@@ -476,31 +435,32 @@ Never raise from this method.
 
 ## Task 3.9 — cli/commands/ingest.py (update)
 
-**File to update:** `cli/commands/ingest.py`
+Task 3.9 — cli/commands/ingest.py (update)
+File to update: cli/commands/ingest.py
+What changes:
 
-**What changes:**
+Add new command function ingest_all() (keep ingest_jobs intact):
 
-1. Add new command function ingest_all() (keep ingest_jobs intact):
-   - No required arguments
-   - Optional --sources flag: comma-separated source names to run
-     (default: all sources)
-   - Optional --limit flag: max companies per ATS (default: from settings)
-   - Optional --dry-run flag: scrape and normalize but do not write to DB
+No required arguments
+Optional --sources flag: comma-separated source names to run (default: all sources)
+Optional --dry-run flag: scrape and normalize but do not write to DB
 
-2. ingest_all() flow:
-   - Import SitemapDiscovery from core.collectors.discovery
-   - Import ATS_REGISTRY from core.collectors.ats_scrapers
-   - Import FEED_REGISTRY from core.collectors.feed_scrapers
-   - Discover slugs for all ATS sources using SitemapDiscovery
-   - Build source configs for all enabled sources
-   - Run MultiSourcePipeline
-   - Print per-source Rich table showing:
-       Source | Discovered | Scraped | Normalized | Inserted | Skipped | Stale
-   - Print domain breakdown table
 
-3. Register ingest_all in cli/main.py as "ingest" command:
-   careeros ingest  (this is the new primary command)
-   careeros ingest-jobs  (keep for backward compatibility)
+ingest_all() flow:
+
+Import FEED_REGISTRY from core.collectors.feed_scrapers
+No SitemapDiscovery, no ATS_REGISTRY — feed scrapers are the entire pipeline
+Build source configs for all enabled feed sources: Simplify, HiringCafe
+Run MultiSourcePipeline
+Print per-source Rich table showing:
+Source | Scraped | Normalized | Inserted | Skipped | Stale
+Print domain breakdown table
+
+
+Register ingest_all in cli/main.py as "ingest" command:
+
+careeros ingest — new primary command
+careeros ingest-jobs — keep for backward compatibility
 
 ---
 
@@ -536,23 +496,11 @@ Run these in order after completing all tasks above.
 
 **Test 1 — Settings load correctly:**
 ```
-python -c "from config.settings import settings; print(settings.groq_api_key[:8])"
+python -c "from config.settings import settings; print(settings.database_url[:20])""
 ```
-Should print the first 8 characters of your Groq key, not an error.
+Should print the start of your DB URL without error.
 
-**Test 2 — Sitemap discovery works:**
-```
-python -c "
-import asyncio
-from core.collectors.discovery import SitemapDiscovery
-d = SitemapDiscovery()
-slugs = asyncio.run(d.get_slugs('greenhouse', limit=10))
-print(slugs)
-"
-```
-Should print 10 real company slugs, varied domains.
-
-**Test 3 — LLM extraction works (Groq):**
+**Test 2 — Normalizer works (rule-based, no LLM):**
 ```
 python -c "
 import asyncio
@@ -560,15 +508,15 @@ from core.normalization.job_normalizer import JobNormalizer
 from core.collectors.base import RawJob
 from datetime import datetime, timezone
 raw = RawJob(
-    source='greenhouse',
-    external_id='test-llm-001',
+    source='yc',
+    external_id='test-001',
     source_url='https://example.com',
     raw_payload={
         'title': 'Senior Mechanical Engineer',
-        'content': 'Design and develop mechanical systems for aerospace applications. Proficiency in SolidWorks, FEA analysis, and GD&T required.',
-        'location': {'name': 'Seattle, WA'},
+        'companyName': 'Relativity Space',
+        'location': 'Long Beach, CA',
     },
-    company_slug='boeing-test',
+    company_slug='relativity-space',
     scraped_at=datetime.now(timezone.utc),
 )
 n = JobNormalizer()
@@ -578,9 +526,47 @@ print('seniority:', result.seniority)
 print('skills:', result.skills)
 "
 ```
-Expected: domain=mechanical engineering, seniority=senior,
-skills contains SolidWorks, FEA, GD&T. NOT python or SQL.
-This is the domain-agnosticism validation test.
+Expected: domain=engineering, seniority=senior, skills=[] (rule-based, no skills for non-HiringCafe).
+
+**Test 3 — HiringCafe normalizer uses pre-enriched fields:**
+```
+python -c "
+import asyncio
+from core.normalization.job_normalizer import JobNormalizer
+from core.collectors.base import RawJob
+from datetime import datetime, timezone
+raw = RawJob(
+    source='hiringcafe',
+    external_id='test-hc-001',
+    source_url='https://example.com',
+    raw_payload={
+        'job_information': {'title': 'Senior Mechanical Engineer'},
+        'v5_processed_job_data': {
+            'company_name': 'Boeing',
+            'seniority_level': 'senior',
+            'workplace_type': 'onsite',
+            'technical_tools': ['SolidWorks', 'FEA', 'GD&T'],
+            'yearly_min_compensation': 120000,
+            'yearly_max_compensation': 160000,
+        },
+        'enriched_company_data': {
+            'industries': ['aerospace'],
+            'nb_employees': 150000,
+            'latest_funding_type': 'public',
+        },
+    },
+    company_slug='boeing',
+    scraped_at=datetime.now(timezone.utc),
+)
+n = JobNormalizer()
+result = asyncio.run(n.normalize(raw))
+print('domain:', result.domain)
+print('seniority:', result.seniority)
+print('skills:', result.skills)
+print('salary_min:', result.salary_min)
+"
+```
+Expected: domain=aerospace, seniority=senior, skills=['SolidWorks', 'FEA', 'GD&T'], salary_min=120000.
 
 **Test 4 — Feed scraper works:**
 ```
@@ -619,71 +605,387 @@ If all results are "software engineering" or "other", the LLM
 extraction or sampling is not working correctly.
 
 ---
+# Phase 3.01 - Resume Ingestion Bridge
 
+Goal: A resume file becomes a structured DB object that can immediately participate in your existing job intelligence system.
+
+Phase complete when: You can run a single CLI command with a DOCX resume and see a resume_id stored in Postgres with extracted skills and raw text.
+
+Task 1 — Resume parsing (extend existing core logic, do not create new architecture layer)
+
+You add resume parsing capability directly inside your existing system without introducing a new subsystem.
+
+What it does:
+Convert DOCX resume into structured data usable by embeddings and ranking.
+
+Inputs:
+
+DOCX file path only (ignore PDF for now)
+Keep interface simple and file-driven
+
+Outputs:
+
+raw_text (trimmed version of resume)
+skills (light extraction)
+experience_years (rough heuristic estimate)
+current_or_last_role (if detectable)
+
+Constraints:
+
+No LLM usage here
+No section-perfect parsing required
+No dependency explosion (keep it lightweight)
+
+Logic:
+
+Extract full text from DOCX
+Normalize whitespace and remove artifacts
+Simple keyword-based skills extraction (use a static minimal list like Python, SQL, ML, Docker, AWS, C++, Java)
+Experience estimate using year patterns (e.g., “2020–2024” → ~4 years)
+
+Important rule:
+Do not try to “perfect parse resumes”. You are building signal, not formatting correctness.
+
+Task 2 — Resume persistence into existing DB schema
+
+You extend your existing data model usage (do NOT redesign schema yet).
+
+What happens:
+Resume becomes a first-class entity in your system like a job.
+
+Stored fields:
+
+raw_text
+skills (jsonb)
+experience_years
+created_at
+source = "cli"
+
+Output:
+resume_id returned immediately after insert
+
+Constraint:
+
+No new tables unless absolutely required (reuse existing schema patterns if possible)
+No normalization pipeline yet for resumes
+
+Task 3 — CLI-based “frontend replacement”
+
+You create a single command that acts as your product input layer.
+
+Command behavior:
+
+Accept DOCX file path
+Run parser
+Store resume
+Print structured summary
+
+Output example:
+
+Resume successfully ingested
+resume_id: 12
+skills: Python, SQL, AWS, Docker
+experience: ~3.5 years
+status: ready_for_embedding
+
+This CLI becomes your temporary “frontend”.
+
+Critical constraint:
+Do NOT build web upload yet. This CLI is your product interface.
+
+Phase 3.01 Test Check:
+
+DOCX resume parsed correctly
+Resume stored in DB
+resume_id generated and retrievable
+Output reproducible on re-run (idempotent insert or duplicate-safe behavior)
 ---
 
-# PHASE 4 — Embeddings
+# PHASE 4 — Unified Embeddings Layer (Jobs + Resume)
 
-**Goal:** Every job in the database has a vector representation.
-Resume can also be embedded. Vector search works.
+**Goal:**  
+Every job and every resume exists in the same vector space so semantic comparison becomes reliable and deterministic.
 
 **Phase complete when:**
-All jobs in the jobs table have a corresponding row in job_embeddings.
-A sample cosine similarity query between two job embeddings returns
-a sensible score (similar jobs score higher than dissimilar ones).
+- All eligible jobs in `jobs` have embeddings in `job_embeddings`
+- Any resume can be embedded via CLI command
+- Cosine similarity between resume and jobs produces meaningful ranking:
+  same-domain jobs > adjacent-domain jobs > unrelated jobs
 
 ---
 
-## Task 4.1 — core/embeddings/job_embedder.py
+## Core Design Rule (Do Not Break)
 
-**File to create:** `core/embeddings/job_embedder.py`
+There is ONLY ONE embedding system:
 
-**What it does:**
-Generates OpenAI text-embedding-3-small embeddings for all jobs
-that don't yet have one. Batch-aware, async, token-safe.
+- Same model
+- Same preprocessing logic
+- Same truncation rules
+- Same vector space
 
-**What to include:**
-- JobEmbedder class
-- embed_jobs() method: fetches all jobs where status = 'normalized',
-  no entry in job_embeddings yet, generates embeddings in batches
-- Input text construction per job:
-    Combine: title + company + location + description (first 500 chars) + skills
-    Truncate to 8,000 tokens maximum (leave buffer below 8191 limit)
-    Use tiktoken to count tokens before sending
-- Batch size: 100 jobs per API call (OpenAI supports batch embedding)
-- After each batch: insert rows into job_embeddings table,
-  update job status to 'embedded'
-- Skip jobs that already have an embedding for this model
-  (idempotent — safe to re-run)
-- Log: total to embed, batches processed, total embedded, any failures
-- Error handling: if one batch fails, log and continue with next batch
-- A resume_id parameter is not needed here — this is job embedding only
-
-**Token truncation:**
-Use the tiktoken library to count tokens.
-If input text exceeds 8000 tokens, truncate description first,
-then skills, keeping title + company + location always intact.
+Jobs and resumes are just different inputs to the same embedding function.
 
 ---
 
-## Task 4.2 — core/embeddings/resume_embedder.py
+# Task 4.1 — Job Embedding System
 
-**File to create:** `core/embeddings/resume_embedder.py`
+**File:** `core/embeddings/job_embedder.py`
 
-**What it does:**
-Generates an embedding for a parsed resume.
-Uses the same model as job_embedder so vectors are comparable.
+---
 
-**What to include:**
-- ResumeEmbedder class
-- embed_resume(resume_id) method:
-    Fetch resume from DB by ID
-    Construct input text: titles + skills + description (raw_text first 1000 chars)
-    Generate embedding using same model as jobs
-    Insert into resume_embeddings table
-    Update resume.is_embedded = True
-- Same token truncation logic as job_embedder
-- Idempotent: if embedding exists for this resume + model, skip
+## What it does
+
+Generates embeddings for all normalized jobs that do not yet have embeddings and stores them in Postgres.
+
+Must be:
+- batch-based
+- async-safe
+- idempotent
+- token-safe
+
+---
+
+## JobEmbedder Class
+
+### Responsibilities
+- Fetch unembedded jobs
+- Construct embedding input text
+- Batch embedding API calls
+- Store embeddings in DB
+- Mark jobs as embedded
+- Handle partial failures safely
+
+---
+
+## embed_jobs() Flow
+
+### Step 1 — Fetch jobs
+
+Select:
+- `status = 'normalized'`
+- NOT EXISTS in `job_embeddings` for current model
+
+---
+
+### Step 2 — Construct embedding input text
+
+For each job: title + company + location + description[:500] + skills
+Rules:
+- Always preserve: title, company, location
+- Truncate description first
+- Skills last priority
+- Keep format consistent across all jobs
+
+---
+
+### Step 3 — Token safety (critical)
+
+Use `tiktoken`
+
+Constraint:
+- Max 8000 tokens per input
+
+If overflow:
+1. truncate description
+2. then truncate skills
+3. NEVER remove title/company/location
+
+---
+
+### Step 4 — Batch embedding
+
+- Batch size: 100 jobs
+- Use embedding API batch endpoint
+- Process sequential batches
+
+---
+
+### Step 5 — Store results
+
+Insert into:
+
+`job_embeddings`
+
+Fields:
+- job_id
+- embedding (vector)
+- model_name
+- created_at
+
+Also update:
+- `jobs.status = 'embedded'`
+
+---
+
+### Step 6 — Idempotency
+
+Skip embedding if:
+- `(job_id, model_name)` already exists
+
+---
+
+### Step 7 — Logging
+
+Log:
+- total jobs found
+- batches processed
+- embeddings created
+- failures (if any)
+
+Pipeline must continue even if one batch fails.
+
+---
+
+# Task 4.2 — Resume Embedding System
+
+**File:** `core/embeddings/resume_embedder.py`
+
+---
+
+## What it does
+
+Embeds a single resume into the same vector space as jobs for similarity search and ranking.
+
+---
+
+## ResumeEmbedder Class
+
+### Responsibilities
+- Fetch resume from DB
+- Build embedding input text
+- Generate embedding
+- Store in DB
+- Ensure idempotency
+
+---
+
+## embed_resume(resume_id)
+
+---
+
+### Step 1 — Fetch resume
+
+From DB:
+- raw_text
+- skills
+- experience_years
+- current/last role (if available)
+
+---
+
+### Step 2 — Construct embedding text
+role + skills + raw_text[:1000]
+Rules:
+- role and skills are highest signal
+- raw_text is secondary context
+- truncate aggressively if needed
+
+---
+
+### Step 3 — Token safety
+
+Same `tiktoken` logic as jobs:
+
+- Max 8000 tokens
+- Preserve:
+  - role
+  - skills
+- truncate raw_text first
+
+---
+
+### Step 4 — Generate embedding
+
+- Must use SAME embedding model as job embedder
+- Ensures cosine similarity is meaningful
+
+---
+
+### Step 5 — Store embedding
+
+Insert into:
+
+`resume_embeddings`
+
+Fields:
+- resume_id
+- embedding
+- model_name
+- created_at
+
+Also update:
+- `resumes.is_embedded = true`
+
+---
+
+### Step 6 — Idempotency
+
+Skip if embedding already exists for:
+- resume_id + model_name
+
+---
+
+### Step 7 — Output logs
+
+Print:
+- resume_id
+- embedding success
+- token usage estimate
+- extracted skills (debug only)
+
+---
+
+# Task 4.3 — Embedding Consistency Contract
+
+This is a strict system rule.
+
+---
+
+## Rule 1 — Single model
+
+All embeddings must use the same model.
+
+---
+
+## Rule 2 — Same preprocessing philosophy
+
+Jobs:structured metadata → description → skills
+---
+
+## Rule 3 — Preserve high-signal fields
+
+Jobs:
+- title
+- company
+- location
+
+Resumes:
+- role
+- skills
+
+Everything else is secondary.
+
+---
+
+## Rule 4 — No LLM in embedding layer
+
+Embedding layer must remain deterministic.
+
+No classification, no reasoning, no enrichment.
+
+---
+
+# Task 4.4 — CLI Execution Hooks
+
+No frontend yet — CLI is the interface.
+
+---
+
+## Command 1 — Embed jobs
+
+```bash
+python -m core.embeddings.job_embedder
+```
 
 ---
 

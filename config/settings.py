@@ -8,11 +8,11 @@ Import the module-level `settings` singleton instead of instantiating Settings d
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from pathlib import Path
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file="config/.env",
+        env_file=Path(__file__).parent / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -50,6 +50,11 @@ class Settings(BaseSettings):
         default=2,
         alias="LLM_MAX_CONCURRENCY",
         description="Max parallel LLM calls during batch normalization",
+    )
+    normalizer_max_concurrency: int = Field(
+        default=20,
+        alias="NORMALIZER_MAX_CONCURRENCY",
+        description="Max parallel normalize() calls during batch normalization",
     )
     llm_request_delay_seconds: float = Field(
         default=5.0,
@@ -91,7 +96,7 @@ class Settings(BaseSettings):
 
     # ── Pipeline freshness ────────────────────────────────────────────────────
     freshness_window_hours: int = Field(
-        default=24,
+        default=168,
         alias="FRESHNESS_WINDOW_HOURS",
         description="Jobs older than this are considered stale and re-fetched",
     )
@@ -100,14 +105,6 @@ class Settings(BaseSettings):
     simplify_feed_url: str = Field(
         default="https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/README.md",
         alias="SIMPLIFY_FEED_URL",
-    )
-    yc_jobs_feed_url: str = Field(
-        default="https://www.ycombinator.com/jobs",
-        alias="YC_JOBS_FEED_URL",
-    )
-    jobright_feed_url: str = Field(
-        default="https://jobright.ai/jobs",
-        alias="JOBRIGHT_FEED_URL",
     )
     hiringcafe_feed_url: str = Field(
         default="https://hiring.cafe/",

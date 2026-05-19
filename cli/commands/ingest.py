@@ -180,19 +180,19 @@ def _print_multi_source_table(results: dict[str, IngestionResult]) -> None:
     table = Table(title="Ingestion Results by Source", show_lines=True)
     table.add_column("Source", style="bold cyan")
     table.add_column("Scraped", justify="right")
+    table.add_column("Normalized", justify="right")
     table.add_column("Inserted", style="green", justify="right")
     table.add_column("Skipped", justify="right")
     table.add_column("Stale", justify="right")
-    table.add_column("Failed", justify="right")
 
     for name, result in results.items():
         table.add_row(
             name,
             str(result.fetched),
+            str(result.fetched),
             str(result.inserted),
             str(result.skipped),
             str(result.stale_filtered),
-            f"[red]{result.failed}[/red]" if result.failed else "0",
         )
 
     console.print()
@@ -213,6 +213,85 @@ def _print_dry_run_multi_table(
 
     console.print()
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# ingest-resume command — Phase 3.01
+# ---------------------------------------------------------------------------
+
+def ingest_resume(
+    file: Annotated[str, typer.Argument(help="Path to DOCX resume file")],
+) -> None:
+    """Parse a DOCX resume and store it in the CareerOS database."""
+    from pathlib import Path
+
+    path = Path(file)
+    if not path.exists():
+        console.print(f"[bold red]File not found: {file}[/bold red]")
+        raise typer.Exit(1)
+    if path.suffix.lower() != ".docx":
+        console.print("[bold red]Only DOCX files are supported (PDF ignored for now).[/bold red]")
+        raise typer.Exit(1)
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        progress.add_task("Parsing resume…", total=None)
+        from core.resume_parser import parse_resume
+        parsed = parse_resume(path)
+
+    from database.session import async_session
+    from database.models.resumes import Resume
+    from sqlalchemy import select
+
+    async def _store() -> tuple[object, bool]:
+        resolved = str(path.resolve())
+        async with async_session() as session:
+            existing = await session.scalar(
+                select(Resume).where(Resume.file_path == resolved)
+            )
+            if existing:
+                return existing.id, True
+
+            resume = Resume(
+                file_name=path.name,
+                file_path=resolved,
+                raw_text=parsed.raw_text,
+                parsed_skills=parsed.skills,
+                parsed_years_exp=parsed.experience_years if parsed.experience_years else None,
+                source="cli",
+            )
+            session.add(resume)
+            await session.flush()
+            resume_id = resume.id
+        return resume_id, False
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        progress.add_task("Storing resume in database…", total=None)
+        resume_id, already_existed = asyncio.run(_store())
+
+    skills_str = ", ".join(parsed.skills) if parsed.skills else "none detected"
+    exp_str = f"~{parsed.experience_years:.1f} years" if parsed.experience_years else "unknown"
+
+    if already_existed:
+        console.print("\n[yellow]Resume already ingested (duplicate file path)[/yellow]")
+    else:
+        console.print("\n[bold green]Resume successfully ingested[/bold green]")
+
+    console.print(f"resume_id:  [cyan]{resume_id}[/cyan]")
+    console.print(f"skills:     [yellow]{skills_str}[/yellow]")
+    console.print(f"experience: [yellow]{exp_str}[/yellow]")
+    if parsed.current_or_last_role:
+        console.print(f"role:       [yellow]{parsed.current_or_last_role}[/yellow]")
+    console.print("status:     [green]ready_for_embedding[/green]\n")
 
 
 def _print_domain_table(counts: Counter) -> None:
@@ -239,7 +318,7 @@ def ingest_all(
     )] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Scrape and normalize without writing to DB")] = False,
 ) -> None:
-    """Scrape all feed sources (Simplify, YC, Jobright, HiringCafe) and load jobs into the database."""
+    """Scrape all feed sources (Simplify, HiringCafe) and load jobs into the database."""
     from core.collectors.feed_scrapers import FEED_REGISTRY
     from core.workflows.pipeline import MultiSourcePipeline, SourceConfig
 
