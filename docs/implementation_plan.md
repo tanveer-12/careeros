@@ -23,8 +23,6 @@ Test checkpoints are marked clearly — do not skip them.
 from all sources without any hardcoded company lists.
 
 **Done already:**
-- GreenhouseScraper (greenhouse.py)
-- LeverScraper (lever.py)
 - JobNormalizer (rule-based, sync)
 - IngestionPipeline with deduplication
 - careeros ingest-jobs CLI command (tested, working)
@@ -1037,79 +1035,178 @@ Compare two mechanical engineering jobs — similarity should be high (> 0.7).
 
 ---
 
----
-
 # PHASE 5 — Market Clustering (Agent 1 Complete)
 
-**Goal:** Jobs grouped into 10-15 meaningful role clusters.
-Clusters are named, have top skills, and cover all domains in the DB.
+**Goal:** Jobs grouped into 10-15 meaningful role clusters. Clusters are named, have top skills, and cover all domains in the DB.
 
-**Phase complete when:**
-role_clusters table has 10-15 rows with meaningful LLM-generated labels.
-At least 2-3 clusters are non-tech (finance, healthcare, engineering, etc.)
-depending on what's in the DB.
+**Phase complete when:** `role_clusters` has 10-15 rows with meaningful labels. At least 2-3 clusters are non-tech.
 
----
 
 ## Task 5.1 — core/clustering/kmeans.py
 
 **File to create:** `core/clustering/kmeans.py`
 
-**What it does:**
-Clusters all job embeddings into K groups using KMeans.
-Generates a new ClusteringRun with centroids and memberships.
+### Imports needed
 
-**What to include:**
-- ClusteringEngine class
-- run_clustering(k=10) method:
-    1. Fetch all job_embeddings from DB (job_id + embedding vector)
-    2. Convert to numpy matrix
-    3. L2-normalize all vectors (normalize each row to unit length)
-    4. Run KMeans(n_clusters=k, random_state=42, n_init=10)
-    5. Insert ClusteringRun row
-    6. For each cluster (0 to k-1):
-         centroid = cluster center vector (already L2-normalized space)
-         job_ids in this cluster
-         top_skills: count skill occurrences across all jobs in cluster,
-                     return top 10 most common
-         Insert RoleCluster row (label is empty string for now)
-         Insert JobClusterMembership row for each job with distance
-    7. Call label_clusters() to generate LLM labels
-    8. Return ClusteringRun ID
-- label_clusters(run_id) method:
-    For each cluster in the run:
-      Collect: cluster label_hint (top skills + sample job titles)
-      Call LLM (Groq): "Given these job titles and skills from the same
-      cluster, generate a 3-5 word professional label for this career area"
-      Update role_clusters.label with the generated label
-      Log: "Cluster {index}: {label}"
-- Should be idempotent: check if a run already exists for today,
-  skip if so (or add --force flag)
+- Standard library: `asyncio`, `collections`, `datetime`, `logging`, `uuid`
+- Third party: `numpy`, `sklearn.cluster.KMeans`, `sklearn.preprocessing.normalize`, `sentence_transformers.SentenceTransformer`
+- Internal: `MODEL_NAME` and `EMBEDDING_DIMENSIONS` from `core.embeddings`, all four ORM models, `async_session`
+
+---
+
+### ClusteringEngine class
+
+**`__init__`**
+- Set `self.model_name = MODEL_NAME`
+- Load `SentenceTransformer(MODEL_NAME)` into `self.model` — reuses HuggingFace cache, no re-download if job embedder already ran
+- Logger name: `careeros.clustering.kmeans`
+
+---
+
+### `run_clustering(k=10, force=False)` async method
+
+**Step 1 — Idempotency check**
+
+Query `clustering_runs` for any row where `run_at` cast to date equals today.
+- If found and `force=False`: log that a run already exists and return the existing `run_id`
+- If `force=True`: proceed and insert a new run regardless
+
+**Step 2 — Fetch all job embeddings**
+
+Query `job_embeddings` joined with `jobs`. For each row collect: `job_id`, embedding vector, `jobs.skills` list, `jobs.title` string. Store as a list of tuples.
+
+Log the total count fetched. If zero rows: log an error telling the user to run `embed_jobs` first and return `None`.
+
+**Step 3 — Build numpy matrix**
+
+Stack all embedding vectors into a numpy float32 matrix of shape `(n_jobs, 384)`.
+L2-normalize each row using `sklearn.preprocessing.normalize` with `norm="l2"`.
+After normalization, dot product between any two rows equals their cosine similarity.
+
+**Step 4 — Run KMeans**
+
+Fit `KMeans` with `n_clusters=k`, `random_state=42`, `n_init=10`.
+After fitting: `labels_` gives the cluster index for each job, `cluster_centers_` gives the centroid for each cluster.
+Log the number of iterations KMeans took to converge.
+
+**Step 5 — Insert ClusteringRun**
+
+Insert a `ClusteringRun` row with: `model` set to `self.model_name`, `k`, `job_count` set to total jobs fetched, `run_at` set to now, `notes` describing the run parameters.
+Flush within the session to get the generated `run_id` before inserting clusters.
+
+**Step 6 — For each cluster index 0 to k-1**
+
+First group all jobs by their assigned cluster label into a dict.
+
+Then for each cluster:
+
+*Top skills:* Flatten all `skills` arrays from jobs in this cluster into one list. Count occurrences with `collections.Counter`. Take the top 10 most common as `top_skills`.
+
+*Sample titles:* Take up to 20 job titles from this cluster. Store alongside the cluster for use in `label_clusters()`.
+
+*Centroid:* Take `cluster_centers_[i]` and convert to a plain Python list.
+
+*Insert RoleCluster:* Fields are `run_id`, `cluster_index`, `label` as empty string for now, `centroid`, `top_skills`, `job_count`. Flush to get the generated `cluster.id`.
+
+*Insert JobClusterMembership rows:* One row per job in this cluster. `distance_to_centroid` is the Euclidean distance between the job's normalized vector and the centroid vector using `numpy.linalg.norm`.
+
+Commit all clusters and memberships together after the loop.
+
+**Step 7 — Label clusters**
+
+Call `label_clusters(run_id, session, sample_titles_by_cluster)` where `sample_titles_by_cluster` is the dict of cluster index to sample title list built in Step 6.
+
+**Step 8 — Log summary and return**
+
+Log a summary line showing how many clusters were labeled and the `run_id`. Return `run_id`.
+
+---
+
+### `label_clusters(run_id, session, sample_titles_by_cluster)` async method
+
+Labels each cluster using the local sentence-transformers model. Fully offline after first model download.
+
+**Strategy: semantic centroid matching**
+
+For each `RoleCluster` in this run:
+
+*Step 1 — Build candidate label strings*
+
+From `top_skills`: use each skill name as a candidate string as-is.
+
+From `sample_titles_by_cluster[cluster_index]`: lowercase and split each title into words. Strip the following stopwords:
+at, in, the, and, of, for, with, a, an, to,
+senior, junior, lead, staff, principal, engineer,
+manager, director, associate, specialist, ii, iii, i,
+vp, svp, evp, head, chief
+
+From the remaining tokens, form all 2-word combinations as additional candidates. Deduplicate the full candidate list and cap at 40 total.
+
+*Step 2 — Embed all candidates in one batch*
+
+Use `self.model.encode` with `normalize_embeddings=True`. Run in a thread executor so the async event loop stays free during the CPU-bound encode step.
+
+*Step 3 — Pick closest candidate to centroid*
+
+The centroid is already a unit vector. Compute dot products between all candidate vectors and the centroid vector. The candidate with the highest dot product is the best label.
+
+*Step 4 — Update DB and log*
+
+Set `cluster.label` to the best candidate. Commit. Log the cluster index, chosen label, and job count.
+
+---
+
+### Logging shape to aim for
+
+- Loading local embedding model: all-MiniLM-L6-v2
+- Fetched 4740 job embeddings
+- Running KMeans(k=10, random_state=42, n_init=10)...
+- KMeans converged in 34 iterations
+- Inserted ClusteringRun: {run_id}
+- Labeling 10 clusters via semantic centroid matching...
+- Cluster 0: Data Engineering (512 jobs)
+- Cluster 1: Mechanical Design (398 jobs)
+- Cluster 2: Investment Banking (201 jobs)
+...
+- Done — 10 clusters labeled, run_id={run_id}
+---
+
+## Task 5.2 — cli/commands/cluster.py
+
+**File to create:** `cli/commands/cluster.py`
+
+**Command:** `careeros cluster`
+
+**Options:**
+- `--k` integer, default 10, controls number of clusters
+- `--force` boolean flag, reruns even if today's run exists
+
+**Flow:**
+1. Print a starting message with Rich
+2. Instantiate `ClusteringEngine` and call `run_clustering(k=k, force=force)`
+3. If `run_id` is `None`: print error and exit with code 1
+4. Query `role_clusters` for this `run_id` ordered by `cluster_index`
+5. Print a Rich table with columns: Index, Label, Job Count, Top Skills (top 3 joined by comma)
+
+**Register in `cli/main.py`** by importing the cluster command and adding it to the Typer app.
 
 ---
 
 ## Phase 5 Test Sequence
 
 **Test 1 — Run clustering:**
+```bash
+careeros cluster
 ```
-python -c "
-import asyncio
-from core.clustering.kmeans import ClusteringEngine
-e = ClusteringEngine()
-run_id = asyncio.run(e.run_clustering(k=10))
-print('Run ID:', run_id)
-"
-```
+Expected: 10 cluster rows logged with labels and job counts. No errors.
 
-**Test 2 — Inspect clusters:**
+**Test 2 — Inspect clusters in DB:**
 ```sql
 SELECT cluster_index, label, job_count, top_skills
 FROM role_clusters
-WHERE run_id = 'your-run-id'
 ORDER BY cluster_index;
 ```
-Verify: labels are meaningful, job_counts sum to total jobs,
-at least some clusters are non-tech if DB has domain-diverse data.
+Verify: labels are meaningful 1-3 word phrases. Job counts sum to total embedded jobs. At least 2 clusters are non-tech if the DB has domain-diverse data.
 
 **Test 3 — Verify memberships:**
 ```sql
@@ -1119,8 +1216,20 @@ JOIN role_clusters rc ON rc.id = jcm.cluster_id
 GROUP BY rc.label
 ORDER BY member_count DESC;
 ```
+Member counts per cluster should match `job_count` in `role_clusters`.
 
----
+**Test 4 — Idempotency:**
+```bash
+careeros cluster
+careeros cluster
+```
+Second run should log "Run already exists for today — skipping" and exit cleanly without inserting anything.
+
+**Test 5 — Force rerun:**
+```bash
+careeros cluster --force
+```
+Should create a new `ClusteringRun` row and re-label all clusters from scratch.
 
 ---
 

@@ -38,6 +38,10 @@ dependencies = [
 
     # Scheduler
     "apscheduler>=3.10.0",
+
+    #phase 4
+    "sentence-transformers>=3.0.0",
+    "numpy>=1.26.0",
 ]
 
 [project.scripts]

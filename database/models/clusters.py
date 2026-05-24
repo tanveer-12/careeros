@@ -47,7 +47,7 @@ class RoleCluster(Base):
     run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clustering_runs.id", ondelete="CASCADE"))
     cluster_index: Mapped[int] = mapped_column(Integer)
     label: Mapped[str] = mapped_column(Text)
-    centroid: Mapped[list[float]] = mapped_column(Vector(1536))
+    centroid: Mapped[list[float]] = mapped_column(Vector(384))
     top_skills: Mapped[list[str]] = mapped_column(ARRAY(String), server_default=text("'{}'"))
     job_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

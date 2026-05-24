@@ -19,16 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config.settings import settings
 from database.models import Job, JobEmbedding
 from database.session import async_session
+from core.embeddings import MODEL_NAME, EMBEDDING_DIMENSIONS, MAX_CHARS
 
 logger = logging.getLogger("careeros.embeddings.job_embedder")
 
-MODEL_NAME = "all-MiniLM-L6-v2"
-EMBEDDING_DIMENSIONS = 384
 # how many jobs to send in one batch
 BATCH_SIZE = 128
-# all-MiniLM-L6-v2 has a 256 word-piece token limit (~500-800 chars).
-# Pre-truncating at 1000 characters is a safe ceiling with headroom.
-MAX_CHARS = 1000
 
 def _build_embedding_text(job: Job) -> str:
     """
@@ -75,8 +71,8 @@ class JobEmbedder:
     def __init__(self) -> None:
         # Load model from local HuggingFace cache (downloads on first run)
         logger.info("Loading local embedding model: %s", MODEL_NAME)
-        self.model      = SentenceTransformer(MODEL_NAME)
         self.model_name = MODEL_NAME
+        self.model      = SentenceTransformer(MODEL_NAME)
         logger.info("Model ready — %d dimensions", EMBEDDING_DIMENSIONS)
 
     # ── Step 1: fetch jobs that still need embeddings ──────────────
@@ -94,7 +90,7 @@ class JobEmbedder:
             .where(
                 ~Job.id.in_(
                     select(JobEmbedding.job_id).where(
-                        JobEmbedding.model_name == self.model_name
+                        JobEmbedding.model == self.model_name
                     )
                 )
             )
@@ -131,6 +127,7 @@ class JobEmbedder:
         session: AsyncSession,
         jobs: list[Job],
         vectors: list[list[float]],
+        texts: list[str],
     ) -> int:
         """
         Insert one JobEmbedding row per job and set job.status='embedded'.
@@ -139,12 +136,12 @@ class JobEmbedder:
         inserted = 0
         now = datetime.now(timezone.utc)
  
-        for job, vector in zip(jobs, vectors):
+        for job, (vector, text) in zip(jobs, zip(vectors,texts)):
             # Row-level idempotency check (belt-and-suspenders)
             exists = await session.execute(
                 select(JobEmbedding).where(
                     JobEmbedding.job_id     == job.id,
-                    JobEmbedding.model_name == self.model_name,
+                    JobEmbedding.model == self.model_name,
                 )
             )
             if exists.scalar_one_or_none():
@@ -153,7 +150,8 @@ class JobEmbedder:
             session.add(JobEmbedding(
                 job_id     = job.id,
                 embedding  = vector,        # pgvector accepts list[float]
-                model_name = self.model_name,
+                model = self.model_name,
+                input_text = text,
                 created_at = now,
             ))
             job.status = "embedded"
@@ -204,7 +202,7 @@ class JobEmbedder:
  
             try:
                 async with async_session() as session:
-                    n = await self._store_embeddings(session, batch, vectors)
+                    n = await self._store_embeddings(session, batch, vectors, texts)
                 created += n
                 logger.info("Batch %d/%d → %d stored", batch_num, len(batches), n)
             except Exception as exc:

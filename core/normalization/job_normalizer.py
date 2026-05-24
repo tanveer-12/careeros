@@ -15,7 +15,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-
+import html
 from selectolax.parser import HTMLParser
 
 from config.settings import settings
@@ -272,6 +272,42 @@ class JobNormalizer:
                 title    = p.get("title") or None
                 company  = p.get("company") or None
                 location = p.get("location") or None
+                # map TheMuse level to seniority
+                level = (p.get("level") or "").lower()
+                seniority_map = {
+                    "internship": "intern",
+                    "entry":      "entry",
+                    "mid":        "mid",
+                    "senior":     "senior",
+                    "manager":    "senior",
+                    "director":   "executive",
+                    "vp":         "executive",
+                    "executive":  "executive",
+                }
+                seniority = seniority_map.get(level) or _infer_seniority(title)
+
+                # map TheMuse categories to domain
+                categories = [html.unescape(c).lower() for c in (p.get("categories") or [])]
+                _themuse_category_map  = {
+                    "engineering":        "software engineering",
+                    "data science":       "data & ai",
+                    "design":             "design",
+                    "marketing":          "marketing",
+                    "sales":              "sales",
+                    "finance":            "finance",
+                    "hr & recruiting":    "hr",
+                    "operations":         "operations",
+                    "legal":              "legal",
+                    "healthcare":         "healthcare",
+                    "product":            "product",
+                    "customer service":   "support",
+                    "business":           "operations",
+                    "science":            "data & ai",
+                }
+                domain = next(
+                    (_themuse_category_map [c] for c in categories if c in _themuse_category_map),
+                    None
+                ) or _infer_domain(title)
 
             elif raw.source == "jobicy":
                 title     = p.get("title") or None
@@ -284,6 +320,27 @@ class JobNormalizer:
                 title    = p.get("title") or None
                 company  = p.get("company") or None
                 location = p.get("location") or None
+                salary_min, salary_max, salary_currency = _extract_salary(p.get("salary"))
+    
+                # map DevITJobs category to your domain taxonomy
+                _devit_category_map  = {
+                    "it":              "software engineering",
+                    "software":        "software engineering",
+                    "engineering":     "engineering",
+                    "data":            "data & ai",
+                    "design":          "design",
+                    "marketing":       "marketing",
+                    "sales":           "sales",
+                    "finance":         "finance",
+                    "hr":              "hr",
+                    "operations":      "operations",
+                    "legal":           "legal",
+                    "healthcare":      "healthcare",
+                    "customer service":"support",
+                }
+                category = (p.get("category") or "").lower()
+                domain   = _devit_category_map .get(category) or _infer_domain(title)
+                seniority = _infer_seniority(title)
 
             else:
                 title    = p.get("title") or None
