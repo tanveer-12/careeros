@@ -135,6 +135,7 @@ Compute bge‑small‑en embedding → store in job_embeddings with model = "bge
 
 Mark job.status = "embedded" (optional, can be skipped).
 
+## -- NEED TO START FROM HERE
 In core/clustering/kmeans.py:
 
 Implement KMeansClustering:
