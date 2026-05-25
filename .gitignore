@@ -3,3 +3,5 @@ config/.env
 docs/agents/
 __pycache__/
 .venv/
+
+web/node_modules/
