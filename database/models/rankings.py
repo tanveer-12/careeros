@@ -1,48 +1,38 @@
-"""ORM model for resume-to-cluster rankings."""
+# database/models/rankings.py
 
-from __future__ import annotations
-
-import enum
-import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Float, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from database.base import Base
+from database.models.base import Base
+from database.models.enums import FitCategory
+
 
 if TYPE_CHECKING:
-    from database.models.clusters import ClusteringRun, RoleCluster
-    from database.models.resumes import Resume
-
-
-class FitCategory(enum.Enum):
-    strong = "strong"
-    adjacent = "adjacent"
-    weak = "weak"
+    from database.models.user_resumes import UserResume
+    from database.models.clustering import RoleCluster, ClusteringRun
 
 
 class Ranking(Base):
     __tablename__ = "rankings"
-    __table_args__ = (UniqueConstraint("resume_id", "cluster_id", "run_id"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("uuid_generate_v4()"))
-    resume_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("resumes.id", ondelete="CASCADE"))
-    cluster_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("role_clusters.id", ondelete="CASCADE"))
-    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clustering_runs.id", ondelete="CASCADE"))
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    resume_id: Mapped[str] = mapped_column(String, nullable=False)
+    cluster_id: Mapped[str] = mapped_column(String, nullable=False)
+    run_id: Mapped[str] = mapped_column(String, nullable=False)
 
-    cosine_similarity: Mapped[float] = mapped_column(Float)
-    rank: Mapped[int] = mapped_column(Integer)
+    cosine_similarity: Mapped[float] = mapped_column(Float, nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    fit_category: Mapped[FitCategory] = mapped_column(Enum(FitCategory, name="fit_category"))
-    skill_gaps: Mapped[list[str]] = mapped_column(ARRAY(String), server_default=text("'{}'"))
-    skill_matches: Mapped[list[str]] = mapped_column(ARRAY(String), server_default=text("'{}'"))
-    reasoning: Mapped[Optional[str]] = mapped_column(Text, default=None)
+    fit_category: Mapped[FitCategory] = mapped_column(SqlEnum(FitCategory), nullable=False)
+    skill_gaps: Mapped[Optional[List[str]]] = mapped_column(JSON, default=[])
+    skill_matches: Mapped[Optional[List[str]]] = mapped_column(JSON, default=[])
+    reasoning: Mapped[Optional[str]] = mapped_column(String)
 
-    ranked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ranked_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    resume: Mapped["Resume"] = relationship("Resume")
+    resume: Mapped["UserResume"] = relationship("UserResume")
     cluster: Mapped["RoleCluster"] = relationship("RoleCluster")
     run: Mapped["ClusteringRun"] = relationship("ClusteringRun")

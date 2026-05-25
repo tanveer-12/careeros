@@ -1,21 +1,30 @@
-"""Import all ORM models to ensure SQLAlchemy's mapper registry is fully populated."""
+# database/models/__init__.py
 
-from database.models.clusters import ClusteringRun, JobClusterMembership, RoleCluster
-from database.models.embeddings import ResumeEmbedding
-from database.models.execution import ExecutionAction, ExecutionPlan
-from database.models.jobs import Job, JobEmbedding
-from database.models.rankings import Ranking
-from database.models.resumes import Resume
+from .base import Base
+from .enums import *
+from .jobs import Job, JobEmbedding
+from .clustering import ClusteringRun, RoleCluster
+from .job_cluster_memberships import JobClusterMembership
+from .user_resumes import UserResume, ResumeEmbedding
+from .rankings import Ranking
+from .two_week_plans import TwoWeekPlan, TwoWeekPlanStep
 
 __all__ = [
+    "Base",
+    "JobSource",
+    "EmploymentType",
+    "WorkLocation",
+    "FitCategory",
+    "WeekPlanStatus",
+    "PlanStepType",
     "Job",
     "JobEmbedding",
-    "ResumeEmbedding",
     "ClusteringRun",
     "RoleCluster",
     "JobClusterMembership",
-    "Resume",
+    "UserResume",
+    "ResumeEmbedding",
     "Ranking",
-    "ExecutionPlan",
-    "ExecutionAction",
+    "TwoWeekPlan",
+    "TwoWeekPlanStep",
 ]
