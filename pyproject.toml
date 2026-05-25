@@ -1,7 +1,7 @@
 [project]
-name = "careeros"
+name = "lumia"
 version = "0.1.0"
-description = "AI-powered career intelligence and job search automation"
+description = "Local-first career intelligence and 2-week planning platform"
 requires-python = ">=3.12"
 dependencies = [
     # Web / API
@@ -23,9 +23,9 @@ dependencies = [
     "selectolax>=0.3.21",
 
     # AI / ML
-    "openai>=1.57.0",
     "scikit-learn>=1.6.0",
     "numpy>=2.2.0",
+    "sentence-transformers>=3.0.0",
 
     # PDF + export
     "pypdf>=5.1.0",
@@ -38,14 +38,10 @@ dependencies = [
 
     # Scheduler
     "apscheduler>=3.10.0",
-
-    #phase 4
-    "sentence-transformers>=3.0.0",
-    "numpy>=1.26.0",
 ]
 
 [project.scripts]
-careeros = "cli.main:app"
+lumia = "cli.main:app"
 
 [build-system]
 requires = ["hatchling"]

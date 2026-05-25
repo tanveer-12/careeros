@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import settings
-from database.models import Resume, ResumeEmbedding  # adjust to your actual model paths
+from database.models.user_resumes import UserResume, ResumeEmbedding  # adjust to your actual model paths
 from database.session import async_session              # adjust to your actual session helper
 from core.embeddings import MODEL_NAME, EMBEDDING_DIMENSIONS, MAX_CHARS
 
@@ -30,7 +30,7 @@ logger = logging.getLogger("careeros.embeddings.resume_embedder")
 # Helper — build the text that gets embedded
 # ─────────────────────────────────────────────
 
-def _build_embedding_text(resume: Resume) -> str:
+def _build_embedding_text(resume: UserResume) -> str:
     """
     Construct the string that becomes the resume's vector.
 
@@ -83,10 +83,10 @@ class ResumeEmbedder:
 
     # ── Fetch ───────────────────────────────────────────────────────
 
-    async def _fetch_resume(self, session: AsyncSession, resume_id: str) -> Resume | None:
+    async def _fetch_resume(self, session: AsyncSession, resume_id: str) -> UserResume | None:
         """Load the resume row from DB. Returns None if not found."""
         result = await session.execute(
-            select(Resume).where(Resume.id == resume_id)
+            select(UserResume).where(UserResume.id == resume_id)
         )
         return result.scalar_one_or_none()
 
@@ -127,7 +127,7 @@ class ResumeEmbedder:
     async def _store_embedding(
         self,
         session: AsyncSession,
-        resume: Resume,
+        resume: UserResume,
         vector: list[float],
         text: str,    
     ) -> None:

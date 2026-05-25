@@ -2,15 +2,16 @@
 core/embeddings/job_embedder.py
 Generates and stores vector embeddings for all normalized jobs that don't have one yet.
 Uses sentence-transformers — runs 100% locally, no API key needed.
-Model: "all-MiniLM-L6-v2"
+Model: "BAAI/bge-small-en"
   - 384 dimensions
-  - Downloads once (~90 MB) on first run, then cached on disk forever
-  - Fast: ~5000 sentences/sec on CPU
- 
+  - Downloads once (~130 MB) on first run, then cached on disk forever
+  - Fast: ~4000 sentences/sec on CPU
+
 Run directly:  python -m core.embeddings.job_embedder
 """
 import asyncio
 import logging
+import uuid
 from datetime import datetime, timezone
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
@@ -79,14 +80,11 @@ class JobEmbedder:
  
     async def _fetch_unembedded_jobs(self, session: AsyncSession) -> list[Job]:
         """
-        Return all jobs with status='normalized' that don't yet have
-        a row in job_embeddings for the current model name.
- 
-        The NOT IN subquery makes repeated runs safe — no duplicates.
+        Return all jobs that don't yet have a row in job_embeddings for the
+        current model. The NOT IN subquery makes repeated runs idempotent.
         """
         stmt = (
             select(Job)
-            .where(Job.status == "normalized")
             .where(
                 ~Job.id.in_(
                     select(JobEmbedding.job_id).where(
@@ -148,20 +146,43 @@ class JobEmbedder:
                 continue  # already stored — skip without error
  
             session.add(JobEmbedding(
+                id         = str(uuid.uuid4()),
                 job_id     = job.id,
-                embedding  = vector,        # pgvector accepts list[float]
-                model = self.model_name,
+                embedding  = vector,
+                model      = self.model_name,
                 input_text = text,
                 created_at = now,
             ))
-            job.status = "embedded"
-            inserted  += 1
+            inserted += 1
  
         await session.commit()
         return inserted
     
+    # ── Single-job embed (synchronous) ─────────────────────────────
+
+    def embed_job(self, job: Job) -> JobEmbedding:
+        """
+        Embed a single job and return an unsaved JobEmbedding row.
+        Text: title + description + skills (space-joined).
+        Caller is responsible for adding the row to a session and committing.
+        """
+        title = (job.title or "").strip()
+        description = (job.description or "").strip()
+        skills_str = " ".join(job.skills or [])
+        text = f"{title} {description} {skills_str}".strip()
+
+        vector = self.model.encode(text, normalize_embeddings=True).tolist()
+
+        return JobEmbedding(
+            id=str(uuid.uuid4()),
+            job_id=job.id,
+            embedding=vector,
+            model="bge-small-en",
+            input_text=text,
+        )
+
     # ── Public entry point ──────────────────────────────────────────
- 
+
     async def embed_jobs(self) -> None:
         """
         Full pipeline:

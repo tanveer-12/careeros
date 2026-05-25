@@ -10,19 +10,18 @@ on the (source, external_id) unique constraint, making all runs idempotent.
 from __future__ import annotations
 
 import logging
+import uuid
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
-from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert
 
-from config.settings import settings
 from core.collectors.base import BaseScraper, RawJob
 from core.normalization.job_normalizer import JobNormalizer, NormalizedJob
-from database.models.jobs import EmploymentType, Job, JobSource, JobStatus, WorkLocation
+from database.models.jobs import EmploymentType, Job, JobSource, WorkLocation
 
-logger = logging.getLogger("careeros.pipeline")
+logger = logging.getLogger("lumia.pipeline")
 
 _BATCH_SIZE = 50
 
@@ -123,20 +122,7 @@ class IngestionPipeline:
 
     async def _store_batch(self, jobs: list[NormalizedJob]) -> tuple[int, int, int]:
         """Insert a batch of normalized jobs. Returns (inserted, skipped_duplicate, stale_filtered)."""
-        cutoff = datetime.now(UTC) - timedelta(hours=settings.freshness_window_hours)
-        fresh_jobs: list[NormalizedJob] = []
-        stale_filtered = 0
-        for job in jobs:
-            posted_at = getattr(job, "posted_at", None)
-            if posted_at is not None and posted_at < cutoff:
-                stale_filtered += 1
-                continue
-            fresh_jobs.append(job)
-
-        if not fresh_jobs:
-            return 0, 0, stale_filtered
-
-        rows = [_to_row(job) for job in fresh_jobs]
+        rows = [_to_row(job) for job in jobs]
 
         async with self._session_factory() as session:
             stmt = (
@@ -146,17 +132,10 @@ class IngestionPipeline:
                 .returning(Job.id)
             )
             result = await session.execute(stmt)
-            inserted_ids = [row[0] for row in result.fetchall()]
-            inserted = len(inserted_ids)
+            inserted = len(result.fetchall())
+            await session.commit()
 
-            if inserted_ids:
-                await session.execute(
-                    update(Job)
-                    .where(Job.id.in_(inserted_ids))
-                    .values(status=JobStatus.normalized, normalized_at=datetime.now(UTC))
-                )
-
-        return inserted, len(fresh_jobs) - inserted, stale_filtered
+        return inserted, len(jobs) - inserted, 0
 
 
 class MultiSourcePipeline:
@@ -204,6 +183,7 @@ def _log_domain_breakdown(jobs: list[NormalizedJob]) -> None:
 
 def _to_row(job: NormalizedJob) -> dict:
     return {
+        "id": str(uuid.uuid4()),
         "source": JobSource(job.source),
         "external_id": job.external_id,
         "source_url": job.source_url,
@@ -222,10 +202,11 @@ def _to_row(job: NormalizedJob) -> dict:
         "salary_max": job.salary_max,
         "salary_currency": job.salary_currency,
         "posted_at": getattr(job, "posted_at", None),
-        "status": JobStatus.raw,
     }
 
 
 def _batched(items: list, n: int):
     for i in range(0, len(items), n):
         yield items[i : i + n]
+
+

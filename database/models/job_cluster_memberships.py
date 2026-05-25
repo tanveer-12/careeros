@@ -1,9 +1,8 @@
 # database/models/job_cluster_memberships.py
 
-from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Float, String, DateTime
+from sqlalchemy import Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.models.base import Base
@@ -18,12 +17,10 @@ class JobClusterMembership(Base):
     __tablename__ = "job_cluster_memberships"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    job_id: Mapped[str] = mapped_column(String, nullable=False)
-    cluster_id: Mapped[str] = mapped_column(String, nullable=False)
-    run_id: Mapped[str] = mapped_column(String, nullable=False)
+    job_id: Mapped[str] = mapped_column(String, ForeignKey("jobs.id"), nullable=False)
+    cluster_id: Mapped[str] = mapped_column(String, ForeignKey("role_clusters.id"), nullable=False)
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("clustering_runs.id"), nullable=False)
     distance_to_centroid: Mapped[float] = mapped_column(Float, nullable=False)
-
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     job: Mapped["Job"] = relationship(
         "Job", back_populates="memberships"

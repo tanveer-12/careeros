@@ -1,49 +1,54 @@
 # database/models/jobs.py
 
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import JSON, String, Boolean, Integer, DateTime, Enum as SqlEnum
+from sqlalchemy import JSON, String, Boolean, Integer, DateTime, Enum as SqlEnum, Uuid, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from pgvector.sqlalchemy import Vector
 from database.models.base import Base
 from database.models.enums import JobSource, EmploymentType, WorkLocation
-
+from .job_cluster_memberships import JobClusterMembership
 
 if TYPE_CHECKING:
     from database.models.job_embeddings import JobEmbedding
     from database.models.job_cluster_memberships import JobClusterMembership
+    from core.collectors.base import RawJob
 
 
 class Job(Base):
     __tablename__ = "jobs"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    source: Mapped[JobSource] = mapped_column(SqlEnum(JobSource), nullable=False)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    source: Mapped[JobSource] = mapped_column(SqlEnum(JobSource, name="job_source",
+        create_type=False,), nullable=False)
     external_id: Mapped[str] = mapped_column(String, nullable=False)
     source_url: Mapped[str] = mapped_column(String, nullable=False)
 
     raw_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
-    scraped_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     title: Mapped[Optional[str]] = mapped_column(String)
     company: Mapped[Optional[str]] = mapped_column(String)
     location: Mapped[Optional[str]] = mapped_column(String)
-    work_location: Mapped[Optional[WorkLocation]] = mapped_column(SqlEnum(WorkLocation))
-    employment_type: Mapped[Optional[EmploymentType]] = mapped_column(SqlEnum(EmploymentType))
+    work_location: Mapped[Optional[WorkLocation]] = mapped_column(SqlEnum(WorkLocation, name="work_location",
+        create_type=False,),)
+    employment_type: Mapped[Optional[EmploymentType]] = mapped_column(SqlEnum(EmploymentType, name="employment_type",
+        create_type=False,),)
     description: Mapped[Optional[str]] = mapped_column(String)
-    skills: Mapped[Optional[List[str]]] = mapped_column(JSON)
+    skills: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
     domain: Mapped[Optional[str]] = mapped_column(String)
     seniority: Mapped[Optional[str]] = mapped_column(String)
     salary_currency: Mapped[Optional[str]] = mapped_column(String(3), default=None)
     salary_min: Mapped[Optional[int]] = mapped_column(Integer, default=None)
     salary_max: Mapped[Optional[int]] = mapped_column(Integer, default=None)
-    posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    closes_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    closes_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     embeddings: Mapped["JobEmbedding"] = relationship(
         "JobEmbedding", back_populates="job", cascade="all, delete-orphan"
@@ -52,24 +57,47 @@ class Job(Base):
         "JobClusterMembership", back_populates="job", cascade="all, delete-orphan"
     )
 
+    @classmethod
+    def from_remotive(cls, raw: "RawJob") -> "Job":
+        from core.normalization.job_normalizer import (
+            _strip_html,
+            _extract_salary,
+            _infer_seniority,
+            _infer_domain,
+            _REMOTIVE_CATEGORY_MAP,
+        )
 
-class JobEmbedding(Base):
-    __tablename__ = "job_embeddings"
+        p = raw.raw_payload
+        title = p.get("title") or None
+        employment_type_str = (p.get("job_type") or "full_time").lower()
+        try:
+            emp_type = EmploymentType(employment_type_str)
+        except ValueError:
+            emp_type = EmploymentType.other
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    job_id: Mapped[str] = mapped_column(String, nullable=False)
+        salary_min, salary_max, salary_currency = _extract_salary(p.get("salary"))
+        domain = (
+            _REMOTIVE_CATEGORY_MAP.get((p.get("category") or "").lower())
+            or _infer_domain(title)
+        )
 
-    model: Mapped[str] = mapped_column(String, nullable=False)
-    embedding: Mapped[Vector] = mapped_column(Vector(384), nullable=False)
-    input_text: Mapped[str] = mapped_column(String, nullable=False)
-    token_count: Mapped[Optional[int]] = mapped_column(Integer)
-
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    __table_args__ = (
-        # ForeignKey to jobs.id (mapped in SQLAlchemy relationship)
-        # In the DB, this is enforced via DDL; in ORM, we keep it simple
-    )
-
-
-    
+        return cls(
+            id=str(uuid.uuid4()),
+            source=JobSource.remotive,
+            external_id=raw.external_id,
+            source_url=raw.source_url,
+            raw_payload=raw.raw_payload,
+            scraped_at=raw.scraped_at,
+            title=title,
+            company=p.get("company_name") or None,
+            location=p.get("candidate_required_location") or None,
+            work_location=WorkLocation.remote,
+            employment_type=emp_type,
+            description=_strip_html(p.get("description") or ""),
+            skills=[],
+            domain=domain,
+            seniority=_infer_seniority(title),
+            salary_min=salary_min,
+            salary_max=salary_max,
+            salary_currency=salary_currency,
+        )

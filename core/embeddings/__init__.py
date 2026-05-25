@@ -46,8 +46,8 @@ CHANGING THE MODEL
 """
 
 # The single source of truth. Both embedder files import from here.
-MODEL_NAME           = "all-MiniLM-L6-v2"  # fast local model, no API key
-EMBEDDING_DIMENSIONS = 384                  # dimensions for all-MiniLM-L6-v2
-MAX_CHARS            = 1000                 # character cap before encoding
+MODEL_NAME           = "BAAI/bge-small-en"  # fast local model, no API key
+EMBEDDING_DIMENSIONS = 384                   # dimensions for BAAI/bge-small-en
+MAX_CHARS            = 1000                  # character cap before encoding
 
 __all__ = ["MODEL_NAME", "EMBEDDING_DIMENSIONS", "MAX_CHARS"]

@@ -1,13 +1,17 @@
 # database/models/__init__.py
 
-from .base import Base
+# database/models/__init__.py
+
+from database.models.base import Base
 from .enums import *
-from .jobs import Job, JobEmbedding
 from .clustering import ClusteringRun, RoleCluster
+from .jobs import Job
+from .job_embeddings import JobEmbedding
 from .job_cluster_memberships import JobClusterMembership
 from .user_resumes import UserResume, ResumeEmbedding
 from .rankings import Ranking
-from .two_week_plans import TwoWeekPlan, TwoWeekPlanStep
+from .two_week_plans import TwoWeekPlan
+from .two_week_plan_steps import TwoWeekPlanStep
 
 __all__ = [
     "Base",

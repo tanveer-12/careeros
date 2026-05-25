@@ -1,31 +1,64 @@
-# 2.1 config/settings.py
+"""
+Single source of truth for all Lumia configuration.
 
-from pydantic_settings import BaseSettings
+All values are read from environment variables or a .env file.
+No secrets or URLs are hardcoded anywhere else in the codebase.
+Import the module-level `settings` singleton instead of instantiating Settings directly.
+"""
+
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/lumia_dev"
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).resolve().parent.parent / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
-    # Embeddings (no LLM‑style generation)
-    EMBEDDING_PROVIDER: str = "huggingface_embedding"
-    EMBEDDING_MODEL_NAME: str = "Supabase/bge-small-en"
-    EMBEDDING_DEVICE: str = "auto"  # or "cpu", "cuda"
+    # ── Database ─────────────────────────────────────────────────────────────
+    DATABASE_URL: str = Field(
+        default="postgresql+asyncpg://postgres:postgres@localhost:5432/lumia_dev",
+    )
 
-    # Job API
-    REMOTIVE_API_URL: str = "https://remotive.com/api/remote-jobs"
+    # ── Embeddings ───────────────────────────────────────────────────────────
+    EMBEDDING_PROVIDER: str = Field(
+        default="huggingface_embedding",
+    )
 
-    # Optional: on‑demand LLM (only when user wants “AI‑explanations”)
-    LLM_ENABLED: bool = True              # can be False for dev‑only / no‑API modes
-    LLM_PROVIDER: str = "huggingface_api" # or ollama / local once you choose
-    LLM_MODEL: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    EMBEDDING_MODEL_NAME: str = Field(
+        default="Supabase/bge-small-en",
+    )
 
-    # General
-    DEBUG: bool = True
+    EMBEDDING_DEVICE: str = Field(
+        default="auto",
+    )
 
-    class Config:
-        env_file = "../.env"
-        env_file_encoding = "utf-8"
+    # ── Job API ──────────────────────────────────────────────────────────────
+    REMOTIVE_API_URL: str = Field(
+        default="https://remotive.com/api/remote-jobs",
+    )
+
+    # ── LLM ──────────────────────────────────────────────────────────────────
+    LLM_ENABLED: bool = Field(
+        default=True,
+    )
+
+    LLM_PROVIDER: str = Field(
+        default="huggingface_api",
+    )
+
+    LLM_MODEL: str = Field(
+        default="meta-llama/Meta-Llama-3-8B-Instruct",
+    )
+
+    # ── General ──────────────────────────────────────────────────────────────
+    DEBUG: bool = Field(
+        default=True,
+    )
 
 
 settings = Settings()

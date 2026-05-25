@@ -1,20 +1,19 @@
-"""CLI commands for running CareerOS ingestion pipelines.
+"""CLI commands for running Lumia ingestion pipelines.
 
-ingest-jobs — single-source scrape with explicit company slugs (backward-compatible)
-ingest       — multi-source scrape across all ATS + feed sources
+ingest        — scrape Remotive and load jobs into the database
+ingest-jobs   — (legacy) placeholder, use `lumia ingest` instead
+ingest-resume — parse a DOCX resume and store it
 
 Usage:
-    careeros ingest
-    careeros ingest --sources greenhouse,lever --limit 200
-    careeros ingest --dry-run
-    careeros ingest-jobs --companies stripe,notion --source greenhouse --dry-run
+    lumia ingest
+    lumia ingest --dry-run
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from typing import Annotated, Optional
+from typing import Annotated
 
 from dotenv import load_dotenv
 import typer
@@ -22,8 +21,6 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from config.settings import settings
-from core.collectors.ats_scrapers import ATS_REGISTRY
 from core.normalization.job_normalizer import JobNormalizer, NormalizedJob
 from core.workflows.pipeline import IngestionPipeline, IngestionResult
 
@@ -39,11 +36,6 @@ def _parse_slugs(companies: str) -> list[str]:
     return [s.strip().lower() for s in companies.split(",") if s.strip()]
 
 
-def _build_scraper(source: str):
-    if source not in ATS_REGISTRY:
-        console.print(f"Unknown source: {source}")
-        raise typer.Exit(1)
-    return ATS_REGISTRY[source]()
 
 
 async def _scrape_and_normalize(
@@ -158,64 +150,6 @@ def ingest_jobs(
 
 
 # ---------------------------------------------------------------------------
-# ingest command — multi-source helpers
-# ---------------------------------------------------------------------------
-
-async def _run_dry_run_all(
-    source_configs,
-    normalizer: JobNormalizer,
-) -> dict[str, tuple[int, list[NormalizedJob]]]:
-    """Scrape + normalize each source without writing to DB. Returns (raw_count, jobs) per source."""
-    results: dict[str, tuple[int, list[NormalizedJob]]] = {}
-    for config in source_configs:
-        slugs: list[str] = [] if config.is_feed else config.slugs
-        async with config.scraper:
-            raw_jobs = await config.scraper.scrape_companies(slugs)
-        normalized = await normalizer.normalize_batch(raw_jobs)
-        results[config.name] = (len(raw_jobs), normalized)
-    return results
-
-
-def _print_multi_source_table(results: dict[str, IngestionResult]) -> None:
-    table = Table(title="Ingestion Results by Source", show_lines=True)
-    table.add_column("Source", style="bold cyan")
-    table.add_column("Scraped", justify="right")
-    table.add_column("Normalized", justify="right")
-    table.add_column("Inserted", style="green", justify="right")
-    table.add_column("Skipped", justify="right")
-    table.add_column("Stale", justify="right")
-
-    for name, result in results.items():
-        table.add_row(
-            name,
-            str(result.fetched),
-            str(result.fetched),
-            str(result.inserted),
-            str(result.skipped),
-            str(result.stale_filtered),
-        )
-
-    console.print()
-    console.print(table)
-
-
-def _print_dry_run_multi_table(
-    dry_results: dict[str, tuple[int, list[NormalizedJob]]],
-) -> None:
-    console.print("\n[bold]Dry run — no data written to database[/bold]")
-    table = Table(title="Scrape + Normalize Preview", show_lines=True)
-    table.add_column("Source", style="bold cyan")
-    table.add_column("Scraped", justify="right")
-    table.add_column("Normalized", justify="right")
-
-    for name, (raw_count, jobs) in dry_results.items():
-        table.add_row(name, str(raw_count), str(len(jobs)))
-
-    console.print()
-    console.print(table)
-
-
-# ---------------------------------------------------------------------------
 # ingest-resume command — Phase 3.01
 # ---------------------------------------------------------------------------
 
@@ -309,57 +243,41 @@ def _print_domain_table(counts: Counter) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ingest command — multi-source entry point
+# ingest command — Remotive entry point
 # ---------------------------------------------------------------------------
 
 def ingest_all(
-    sources: Annotated[Optional[str], typer.Option(
-        "--sources", help="Comma-separated feed source names to run (default: all)"
-    )] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Scrape and normalize without writing to DB")] = False,
 ) -> None:
-    """Scrape all feed sources (Simplify, HiringCafe) and load jobs into the database."""
-    from core.collectors.feed_scrapers import FEED_REGISTRY
-    from core.workflows.pipeline import MultiSourcePipeline, SourceConfig
+    """Scrape Remotive and load fresh jobs into the database."""
+    from core.collectors.api_scrapers.remotive import RemotiveScraper
 
-    all_feeds = list(FEED_REGISTRY.keys())
-
-    if sources:
-        requested = [s.strip().lower() for s in sources.split(",") if s.strip()]
-        unknown = [s for s in requested if s not in all_feeds]
-        if unknown:
-            console.print(f"[bold red]Unknown sources: {', '.join(unknown)}[/bold red]")
-            console.print(f"Available: {', '.join(all_feeds)}")
-            raise typer.Exit(1)
-        feed_names = requested
-    else:
-        feed_names = all_feeds
-
-    source_configs = [
-        SourceConfig(name=feed, scraper=FEED_REGISTRY[feed](), is_feed=True)
-        for feed in feed_names
-    ]
-
+    scraper = RemotiveScraper()
     normalizer = JobNormalizer()
 
     if dry_run:
+        async def _dry():
+            async with scraper:
+                raw_jobs = await scraper.scrape_companies([])
+            normalized = await normalizer.normalize_batch(raw_jobs)
+            return raw_jobs, normalized
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
             transient=True,
         ) as progress:
-            progress.add_task("Scraping and normalizing (dry run)…", total=None)
-            dry_results = asyncio.run(_run_dry_run_all(source_configs, normalizer))
+            progress.add_task("Scraping Remotive (dry run)…", total=None)
+            raw_jobs, normalized = asyncio.run(_dry())
 
-        _print_dry_run_multi_table(dry_results)
-        all_jobs = [job for _, jobs in dry_results.values() for job in jobs]
-        _print_domain_table(Counter(job.domain or "unknown" for job in all_jobs))
+        _print_dry_run_table(normalized, len(raw_jobs))
+        _print_domain_table(Counter(job.domain or "unknown" for job in normalized))
         return
 
-    from database.session import async_session  # deferred: avoids DB import when --dry-run
+    from database.session import async_session
 
-    pipeline = MultiSourcePipeline(source_configs, normalizer, async_session)
+    pipeline = IngestionPipeline(scraper, normalizer, async_session)
 
     with Progress(
         SpinnerColumn(),
@@ -367,12 +285,8 @@ def ingest_all(
         console=console,
         transient=True,
     ) as progress:
-        progress.add_task("Running all sources…", total=None)
-        results = asyncio.run(pipeline.run())
+        progress.add_task("Scraping Remotive…", total=None)
+        result = asyncio.run(pipeline.run([]))
 
-    _print_multi_source_table(results)
-
-    combined_counts: Counter = Counter()
-    for result in results.values():
-        combined_counts.update(result.domain_counts)
-    _print_domain_table(combined_counts)
+    _print_result_table(result)
+    _print_domain_table(Counter(result.domain_counts))
