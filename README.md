@@ -1,4 +1,4 @@
-# CareerOS
+# Lumia
 
 A local-first career intelligence system that scrapes job boards, maps your resume against the market using vector embeddings, and generates a prioritized weekly action plan.
 
