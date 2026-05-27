@@ -50,4 +50,8 @@ MODEL_NAME           = "BAAI/bge-small-en"  # fast local model, no API key
 EMBEDDING_DIMENSIONS = 384                   # dimensions for BAAI/bge-small-en
 MAX_CHARS            = 1000                  # character cap before encoding
 
-__all__ = ["MODEL_NAME", "EMBEDDING_DIMENSIONS", "MAX_CHARS"]
+# Bump this whenever _build_embedding_text() changes. Stored alongside every
+# embedding row so stale embeddings can be detected and re-run selectively.
+TEXT_VERSION         = "v2"
+
+__all__ = ["MODEL_NAME", "EMBEDDING_DIMENSIONS", "MAX_CHARS", "TEXT_VERSION"]

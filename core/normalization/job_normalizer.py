@@ -1,7 +1,7 @@
-"""Normalizer: Remotive-only field extraction.
+"""Normalizer: rule-based field extraction for Himalayas and Remotive.
 
-Rule-based: employment_type · salary · HTML strip · seniority · domain
-All Remotive jobs are remote — work_location is always "remote".
+Rule-based: employment_type · salary · HTML strip · seniority · domain · skills
+All jobs from both sources are remote — work_location is always "remote".
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from selectolax.parser import HTMLParser
 
 from core.collectors.base import RawJob
+from core.normalization.skill_enricher import SkillEnrichment, enrich_skills
 
 _log = logging.getLogger("lumia.normalization")
 
@@ -43,16 +44,23 @@ class NormalizedJob:
     title: str | None
     company: str | None
     location: str | None
-    work_location: str | None    # always "remote" for Remotive
+    work_location: str | None    # always "remote" for both sources
     employment_type: str | None  # "full_time" | "part_time" | "contract" | "internship" | "freelance"
     description: str | None      # HTML-stripped plain text
-    skills: list[str] = field(default_factory=list)
+    skills: list[str] = field(default_factory=list)  # mirror of skills_final; kept for backward compat
     domain: str | None = None
     seniority: str | None = None
     salary_min: int | None = None
     salary_max: int | None = None
     salary_currency: str | None = None
     posted_at: datetime | None = None
+    # ── Skill enrichment (generated; not from source) ──────────────────────
+    skills_extracted: list[str] = field(default_factory=list)
+    skills_normalized: list[str] = field(default_factory=list)
+    skills_inferred: list[str] = field(default_factory=list)
+    skills_final: list[str] = field(default_factory=list)
+    skills_confidence: float = 0.0
+    skills_source_version: str = ""
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -267,6 +275,10 @@ def _normalize_remotive(raw: RawJob) -> NormalizedJob:
         _REMOTIVE_CATEGORY_MAP.get((p.get("category") or "").lower())
         or _infer_domain(title)
     )
+    seniority = _infer_seniority(title)
+    category = p.get("category") or ""
+    categories = [category] if category else []
+    enrichment: SkillEnrichment = enrich_skills(title, description, categories, domain, seniority)
     return NormalizedJob(
         source=raw.source,
         external_id=raw.external_id,
@@ -279,12 +291,18 @@ def _normalize_remotive(raw: RawJob) -> NormalizedJob:
         work_location="remote",
         employment_type=employment_type,
         description=description,
-        skills=[],
+        skills=enrichment.final,
         domain=domain,
-        seniority=_infer_seniority(title),
+        seniority=seniority,
         salary_min=salary_min,
         salary_max=salary_max,
         salary_currency=salary_currency,
+        skills_extracted=enrichment.extracted,
+        skills_normalized=enrichment.normalized,
+        skills_inferred=enrichment.inferred,
+        skills_final=enrichment.final,
+        skills_confidence=enrichment.confidence,
+        skills_source_version=enrichment.source_version,
     )
 
 
@@ -304,9 +322,6 @@ def _normalize_himalayas(raw: RawJob) -> NormalizedJob:
     employment_type = _HIMALAYAS_EMPLOYMENT_MAP.get(raw_type, "full_time")
 
     description = _strip_html(p.get("description") or "")
-
-    # skills not provided by this API endpoint
-    skills: list[str] = []
 
     # flat salary fields (integers or null)
     salary_min_raw = p.get("minSalary")
@@ -338,6 +353,10 @@ def _normalize_himalayas(raw: RawJob) -> NormalizedJob:
         except Exception:
             pass
 
+    # Skill enrichment — combine categories and parentCategories as signals
+    categories: list[str] = (p.get("categories") or []) + (p.get("parentCategories") or [])
+    enrichment: SkillEnrichment = enrich_skills(title, description, categories, domain, seniority)
+
     return NormalizedJob(
         source=raw.source,
         external_id=raw.external_id,
@@ -350,13 +369,19 @@ def _normalize_himalayas(raw: RawJob) -> NormalizedJob:
         work_location="remote",  # Himalayas is remote-only
         employment_type=employment_type,
         description=description,
-        skills=skills,
+        skills=enrichment.final,
         domain=domain,
         seniority=seniority,
         salary_min=salary_min,
         salary_max=salary_max,
         salary_currency=salary_currency,
         posted_at=posted_at,
+        skills_extracted=enrichment.extracted,
+        skills_normalized=enrichment.normalized,
+        skills_inferred=enrichment.inferred,
+        skills_final=enrichment.final,
+        skills_confidence=enrichment.confidence,
+        skills_source_version=enrichment.source_version,
     )
 
 
@@ -395,6 +420,13 @@ class JobNormalizer:
                     work_location=None,
                     employment_type=None,
                     description=None,
+                    skills=[],
+                    skills_extracted=[],
+                    skills_normalized=[],
+                    skills_inferred=[],
+                    skills_final=[],
+                    skills_confidence=0.0,
+                    skills_source_version="",
                 ))
             else:
                 normalized.append(result)

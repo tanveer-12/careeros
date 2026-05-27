@@ -2,7 +2,7 @@
 
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Float, ForeignKey, String
+from sqlalchemy import Float, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.models.base import Base
@@ -16,11 +16,18 @@ if TYPE_CHECKING:
 class JobClusterMembership(Base):
     __tablename__ = "job_cluster_memberships"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    job_id: Mapped[str] = mapped_column(String, ForeignKey("jobs.id"), nullable=False)
-    cluster_id: Mapped[str] = mapped_column(String, ForeignKey("role_clusters.id"), nullable=False)
-    run_id: Mapped[str] = mapped_column(String, ForeignKey("clustering_runs.id"), nullable=False)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    job_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("jobs.id"), nullable=False)
+    cluster_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("role_clusters.id"), nullable=False)
+    run_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("clustering_runs.id"), nullable=False)
     distance_to_centroid: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # HDBSCAN soft-clustering confidence — 0.0 (borderline) to 1.0 (core member)
+    membership_prob: Mapped[Optional[float]] = mapped_column(Float)
+
+    # 2-D UMAP coordinates for visualization only (not used for retrieval)
+    umap_x: Mapped[Optional[float]] = mapped_column(Float)
+    umap_y: Mapped[Optional[float]] = mapped_column(Float)
 
     job: Mapped["Job"] = relationship(
         "Job", back_populates="memberships"

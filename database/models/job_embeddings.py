@@ -20,6 +20,7 @@ class JobEmbedding(Base):
     model: Mapped[str] = mapped_column(String, nullable=False)
     embedding: Mapped[Vector] = mapped_column(Vector(384), nullable=False)
     input_text: Mapped[str] = mapped_column(String, nullable=False)
+    input_text_version: Mapped[Optional[str]] = mapped_column(String)
     token_count: Mapped[Optional[int]] = mapped_column(Integer)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

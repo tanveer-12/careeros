@@ -28,6 +28,8 @@ _UPDATABLE_COLS = [
     "title", "company", "location", "work_location", "employment_type",
     "description", "skills", "domain", "seniority",
     "salary_min", "salary_max", "salary_currency", "posted_at",
+    "skills_extracted", "skills_normalized", "skills_inferred",
+    "skills_final", "skills_confidence", "skills_source_version",
 ]
 
 logger = logging.getLogger("lumia.pipeline")
@@ -222,13 +224,19 @@ def _to_row(job: NormalizedJob) -> dict:
         "work_location": WorkLocation(job.work_location) if job.work_location else None,
         "employment_type": EmploymentType(job.employment_type) if job.employment_type else None,
         "description": job.description,
-        "skills": job.skills or None,
+        "skills": job.skills_final if job.skills_final else None,  # mirror of skills_final
         "domain": job.domain,
         "seniority": job.seniority,
         "salary_min": job.salary_min,
         "salary_max": job.salary_max,
         "salary_currency": job.salary_currency,
         "posted_at": getattr(job, "posted_at", None),
+        "skills_extracted": job.skills_extracted or [],
+        "skills_normalized": job.skills_normalized or [],
+        "skills_inferred": job.skills_inferred or [],
+        "skills_final": job.skills_final or [],
+        "skills_confidence": job.skills_confidence,
+        "skills_source_version": job.skills_source_version or "",
     }
 
 
