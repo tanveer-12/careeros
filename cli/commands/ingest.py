@@ -87,8 +87,8 @@ def _print_result_table(result) -> None:
 
     table.add_row("Companies scraped", str(result.companies))
     table.add_row("Jobs fetched", str(result.fetched))
-    table.add_row("Jobs inserted", f"[green]{result.inserted}[/green]")
-    table.add_row("Jobs skipped (duplicates)", str(result.skipped))
+    table.add_row("Jobs inserted (new)", f"[green]{result.inserted}[/green]")
+    table.add_row("Jobs updated (refreshed)", f"[cyan]{result.updated}[/cyan]")
     table.add_row("Jobs failed", f"[red]{result.failed}[/red]" if result.failed else "0")
 
     console.print()
@@ -243,22 +243,24 @@ def _print_domain_table(counts: Counter) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ingest command — Remotive entry point
+# ingest command — Himalayas entry point
 # ---------------------------------------------------------------------------
 
 def ingest_all(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Scrape and normalize without writing to DB")] = False,
+    companies: Annotated[str, typer.Option("--companies", help="Comma-separated company names to filter (default: all)")] = "",
 ) -> None:
-    """Scrape Remotive and load fresh jobs into the database."""
-    from core.collectors.api_scrapers.remotive import RemotiveScraper
+    """Scrape Himalayas and load fresh remote jobs into the database."""
+    from core.collectors.api_scrapers.himalayas import HimalayasScraper
 
-    scraper = RemotiveScraper()
+    slugs = _parse_slugs(companies) if companies else []
+    scraper = HimalayasScraper()
     normalizer = JobNormalizer()
 
     if dry_run:
         async def _dry():
             async with scraper:
-                raw_jobs = await scraper.scrape_companies([])
+                raw_jobs = await scraper.scrape_companies(slugs)
             normalized = await normalizer.normalize_batch(raw_jobs)
             return raw_jobs, normalized
 
@@ -268,7 +270,7 @@ def ingest_all(
             console=console,
             transient=True,
         ) as progress:
-            progress.add_task("Scraping Remotive (dry run)…", total=None)
+            progress.add_task("Scraping Himalayas (dry run)…", total=None)
             raw_jobs, normalized = asyncio.run(_dry())
 
         _print_dry_run_table(normalized, len(raw_jobs))
@@ -285,8 +287,8 @@ def ingest_all(
         console=console,
         transient=True,
     ) as progress:
-        progress.add_task("Scraping Remotive…", total=None)
-        result = asyncio.run(pipeline.run([]))
+        progress.add_task("Scraping Himalayas…", total=None)
+        result = asyncio.run(pipeline.run(slugs))
 
     _print_result_table(result)
     _print_domain_table(Counter(result.domain_counts))

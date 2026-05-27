@@ -19,6 +19,7 @@ CREATE EXTENSION IF NOT EXISTS vector;          -- pgvector: vector type + index
 
 CREATE TYPE job_source AS ENUM (
     'remotive',
+    'himalayas',
     'manual'
 );
 

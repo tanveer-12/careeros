@@ -77,7 +77,19 @@ class RemotiveScraper(BaseScraper):
         return _FALLBACK_CATEGORY_SLUGS
 
     async def get_fresh_jobs(self) -> list[dict]:
-        """Return all jobs across every Remotive category, deduplicated by id."""
+        """Return all active jobs from Remotive via a single global fetch."""
+        try:
+            jobs = await self.fetch_jobs_page()  # no params → all listings
+            _log.info("get_fresh_jobs: %d jobs from global endpoint", len(jobs))
+            if jobs:
+                return jobs
+            _log.warning("Global endpoint returned 0 jobs — falling back to per-category")
+        except Exception as exc:
+            _log.warning("Global fetch failed (%s) — falling back to per-category", exc)
+        return await self._fetch_by_category()
+
+    async def _fetch_by_category(self) -> list[dict]:
+        """Fallback: fetch per category and deduplicate by id."""
         slugs = await self._fetch_category_slugs()
         results = await asyncio.gather(
             *[self.fetch_jobs_page(category=slug) for slug in slugs],
@@ -94,7 +106,7 @@ class RemotiveScraper(BaseScraper):
                 if eid and eid not in seen:
                     seen.add(eid)
                     jobs.append(job)
-        _log.info("get_fresh_jobs: %d unique jobs across %d categories", len(jobs), len(slugs))
+        _log.info("_fetch_by_category: %d unique jobs across %d categories", len(jobs), len(slugs))
         return jobs
 
     def _to_raw_job(self, job: dict) -> RawJob:

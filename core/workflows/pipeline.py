@@ -3,8 +3,8 @@
 IngestionPipeline wires the three layers together without owning any of them.
 Each layer is injected so they can be swapped or mocked independently in tests.
 
-Deduplication is handled at the DB layer via INSERT ... ON CONFLICT DO NOTHING
-on the (source, external_id) unique constraint, making all runs idempotent.
+Jobs are upserted via INSERT ... ON CONFLICT DO UPDATE on (source, external_id),
+so each run refreshes existing jobs and inserts new ones without creating duplicates.
 """
 
 from __future__ import annotations
@@ -15,11 +15,20 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
 from core.collectors.base import BaseScraper, RawJob
 from core.normalization.job_normalizer import JobNormalizer, NormalizedJob
 from database.models.jobs import EmploymentType, Job, JobSource, WorkLocation
+
+# Columns refreshed on every upsert; id/source/external_id are the conflict key and never change
+_UPDATABLE_COLS = [
+    "source_url", "raw_payload", "scraped_at",
+    "title", "company", "location", "work_location", "employment_type",
+    "description", "skills", "domain", "seniority",
+    "salary_min", "salary_max", "salary_currency", "posted_at",
+]
 
 logger = logging.getLogger("lumia.pipeline")
 
@@ -33,8 +42,8 @@ _BATCH_SIZE = 50
 @dataclass
 class IngestionResult:
     fetched: int    # total RawJobs returned by scraper
-    inserted: int   # new rows written to DB
-    skipped: int    # duplicates skipped (ON CONFLICT DO NOTHING)
+    inserted: int   # brand-new rows written to DB
+    updated: int    # existing rows refreshed via ON CONFLICT DO UPDATE
     failed: int     # DB errors
     companies: int  # number of companies scraped
     stale_filtered: int = 0  # jobs dropped by the 24-hour freshness filter
@@ -43,7 +52,7 @@ class IngestionResult:
     def __str__(self) -> str:
         return (
             f"companies={self.companies} fetched={self.fetched} "
-            f"inserted={self.inserted} skipped={self.skipped} "
+            f"inserted={self.inserted} updated={self.updated} "
             f"failed={self.failed} stale_filtered={self.stale_filtered}"
         )
 
@@ -84,22 +93,33 @@ class IngestionPipeline:
             raw_jobs: list[RawJob] = await self._scraper.scrape_companies(company_slugs)
         fetched = len(raw_jobs)
 
-        normalized: list[NormalizedJob] = await self._normalizer.normalize_batch(raw_jobs)
+        normalized_raw: list[NormalizedJob] = await self._normalizer.normalize_batch(raw_jobs)
+
+        # Deduplicate by (source, external_id) — API may emit the same job at multiple offsets
+        seen_keys: set[tuple[str, str]] = set()
+        normalized: list[NormalizedJob] = []
+        for job in normalized_raw:
+            key = (job.source, job.external_id)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                normalized.append(job)
+        if len(normalized) < len(normalized_raw):
+            logger.info("Deduplicated %d → %d normalized jobs", len(normalized_raw), len(normalized))
 
         inserted = 0
-        skipped = 0
+        updated = 0
         failed = 0
         stale_filtered = 0
 
         for i, batch in enumerate(_batched(normalized, _BATCH_SIZE), start=1):
             try:
-                batch_inserted, batch_skipped, batch_stale = await self._store_batch(batch)
+                batch_inserted, batch_updated, batch_stale = await self._store_batch(batch)
                 inserted += batch_inserted
-                skipped += batch_skipped
+                updated += batch_updated
                 stale_filtered += batch_stale
                 logger.info(
-                    "Batch %d: inserted %d, skipped %d, stale_filtered %d",
-                    i, batch_inserted, batch_skipped, batch_stale,
+                    "Batch %d: inserted %d, updated %d, stale_filtered %d",
+                    i, batch_inserted, batch_updated, batch_stale,
                 )
             except Exception:
                 logger.exception("Batch %d failed (%d jobs)", i, len(batch))
@@ -111,7 +131,7 @@ class IngestionPipeline:
         result = IngestionResult(
             fetched=fetched,
             inserted=inserted,
-            skipped=skipped,
+            updated=updated,
             failed=failed,
             companies=len(company_slugs),
             stale_filtered=stale_filtered,
@@ -121,21 +141,28 @@ class IngestionPipeline:
         return result
 
     async def _store_batch(self, jobs: list[NormalizedJob]) -> tuple[int, int, int]:
-        """Insert a batch of normalized jobs. Returns (inserted, skipped_duplicate, stale_filtered)."""
+        """Upsert a batch of normalized jobs. Returns (inserted_new, updated_existing, stale_filtered)."""
         rows = [_to_row(job) for job in jobs]
+        ins = insert(Job)
 
         async with self._session_factory() as session:
             stmt = (
-                insert(Job)
+                ins
                 .values(rows)
-                .on_conflict_do_nothing(index_elements=["source", "external_id"])
-                .returning(Job.id)
+                .on_conflict_do_update(
+                    index_elements=["source", "external_id"],
+                    set_={col: ins.excluded[col] for col in _UPDATABLE_COLS},
+                )
+                # xmax = 0 on a true INSERT; non-zero on an UPDATE (conflict resolution)
+                .returning(Job.id, text("(xmax = 0) AS is_new"))
             )
             result = await session.execute(stmt)
-            inserted = len(result.fetchall())
+            rows_out = result.fetchall()
             await session.commit()
 
-        return inserted, len(jobs) - inserted, 0
+        inserted = sum(1 for row in rows_out if row[1])
+        updated = len(rows_out) - inserted
+        return inserted, updated, 0
 
 
 class MultiSourcePipeline:

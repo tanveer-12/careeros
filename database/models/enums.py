@@ -5,6 +5,7 @@ from enum import Enum
 
 class JobSource(str, Enum):
     remotive = "remotive"
+    himalayas = "himalayas"
     manual = "manual"
 
 

@@ -42,6 +42,14 @@ class Settings(BaseSettings):
         default="https://remotive.com/api/remote-jobs",
     )
 
+    HIMALAYAS_API_URL: str = Field(
+        default="https://himalayas.app/jobs/api",
+    )
+
+    HIMALAYAS_PAGE_LIMIT: int = Field(
+        default=20,  # API hard cap is 20 per request
+    )
+
     # ── LLM ──────────────────────────────────────────────────────────────────
     LLM_ENABLED: bool = Field(
         default=True,
