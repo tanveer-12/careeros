@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Instrument_Serif } from 'next/font/google'
 import './globals.css'
-import BottomNav from '@/components/BottomNav'
+import ConditionalBottomNav from '@/components/ConditionalBottomNav'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -9,9 +9,17 @@ const inter = Inter({
   display: 'swap',
 })
 
+const instrumentSerif = Instrument_Serif({
+  subsets: ['latin'],
+  weight: '400',
+  style: ['normal', 'italic'],
+  variable: '--font-instrument',
+  display: 'swap',
+})
+
 export const metadata: Metadata = {
   title: 'Lumia — Career Intelligence',
-  description: 'Know exactly where you stand. Lumia maps your resume against today\'s live job market.',
+  description: 'Lumia maps your resume against today\'s live job market and gives you a specific, weekly plan to get where you want to go.',
 }
 
 export default function RootLayout({
@@ -20,10 +28,10 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body style={{ background: '#F8F7F4', minHeight: '100vh' }}>
+    <html lang="en" className={`${inter.variable} ${instrumentSerif.variable}`}>
+      <body style={{ background: '#F5F6F4', minHeight: '100vh' }}>
         {children}
-        <BottomNav />
+        <ConditionalBottomNav />
       </body>
     </html>
   )

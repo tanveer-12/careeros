@@ -3,16 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --background: #F8F7F4;
-  --surface: #FFFFFF;
-  --text-primary: #1A1A1A;
-  --text-secondary: #6B6B6B;
-  --crimson: #8B1A1A;
-  --crimson-light: #B94040;
-  --gold: #C9A84C;
-  --gold-subtle: #F0E4C2;
-  --border: #E8E6E1;
-  --border-strong: #D4D0C8;
+  --base:           #F5F6F4;
+  --surface:        #FFFFFF;
+  --dark:           #0D1F1F;
+  --text-primary:   #0D1F1F;
+  --text-secondary: #4A6670;
+  --brand:          #0A7C6E;
+  --brand-hover:    #0D9B8A;
+  --gold:           #C9873A;
+  --gold-subtle:    rgba(201,135,58,0.12);
+  --border-light:   rgba(255,255,255,0.10);
+  --border-dark:    rgba(13,31,31,0.08);
 }
 
 * {
@@ -26,17 +27,22 @@ html {
 }
 
 body {
-  background-color: #F8F7F4;
-  color: #1A1A1A;
+  background-color: var(--base);
+  color: var(--text-primary);
   font-family: var(--font-inter), Inter, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 @keyframes ticker {
-  0% { transform: translateX(0); }
+  0%   { transform: translateX(0); }
   100% { transform: translateX(-50%); }
 }
 
 .animate-ticker {
-  animation: ticker 30s linear infinite;
+  animation: ticker 35s linear infinite;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0);    filter: blur(0);   }
 }
