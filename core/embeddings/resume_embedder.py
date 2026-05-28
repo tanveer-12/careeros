@@ -11,6 +11,7 @@ everything from scratch, because different models produce incompatible spaces.
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from sentence_transformers import SentenceTransformer
@@ -136,10 +137,11 @@ class ResumeEmbedder:
         Both changes are committed in one transaction.
         """
         session.add(ResumeEmbedding(
+            id         = str(uuid.uuid4()),
             resume_id  = resume.id,
-            embedding  = vector,        # pgvector column
-            model      = self.model_name,   # 'model' not 'model_name'
-            input_text = text,              # required field
+            embedding  = vector,
+            model      = self.model_name,
+            input_text = text,
             created_at = datetime.now(timezone.utc),
         ))
         resume.is_embedded = True

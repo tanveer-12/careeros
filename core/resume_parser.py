@@ -13,11 +13,48 @@ from pathlib import Path
 
 
 SKILLS = [
-    "Python", "SQL", "ML", "Docker", "AWS", "C++", "Java",
-    "JavaScript", "TypeScript", "Go", "Rust", "React", "Node.js",
-    "Kubernetes", "GCP", "Azure", "Spark", "TensorFlow", "PyTorch",
-    "FastAPI", "Django", "Flask", "PostgreSQL", "MongoDB", "Redis",
-    "Linux", "Git", "Terraform", "Scala", "R", "Kafka", "Airflow",
+    # Languages
+    "Python", "JavaScript", "TypeScript", "Java", "C++", "C#", "Go", "Rust",
+    "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R", "MATLAB", "Perl", "Elixir",
+    "Haskell", "Clojure",
+    # Frontend
+    "React", "Vue.js", "Angular", "Next.js", "Svelte", "HTML", "CSS",
+    "Tailwind CSS", "Redux", "GraphQL", "REST",
+    # Backend
+    "Node.js", "FastAPI", "Django", "Flask", "Spring Boot", "Express.js",
+    "Rails", ".NET", "Laravel", "ASP.NET", "gRPC",
+    # Databases
+    "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "Cassandra",
+    "DynamoDB", "SQLite", "Snowflake", "BigQuery", "Redshift", "Databricks",
+    "Pinecone", "Weaviate", "ChromaDB",
+    # Cloud & DevOps
+    "AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "Ansible",
+    "CI/CD", "GitHub Actions", "Jenkins", "Helm", "Linux", "Git", "Pulumi",
+    "Cloudflare", "Nginx", "Prometheus", "Grafana",
+    # Data Engineering
+    "Spark", "Airflow", "Kafka", "dbt", "Hadoop", "Flink", "RabbitMQ",
+    "Celery", "Hive", "Presto", "Trino", "Fivetran", "Stitch",
+    # ML & AI
+    "TensorFlow", "PyTorch", "scikit-learn", "Keras", "Hugging Face",
+    "LangChain", "XGBoost", "LightGBM", "pandas", "NumPy", "CUDA", "JAX",
+    "MLflow", "OpenAI", "LLM", "NLP", "Computer Vision", "RAG",
+    "Reinforcement Learning", "Feature Engineering", "Model Deployment",
+    "Weights & Biases", "SageMaker", "Vertex AI",
+    # Analytics & BI
+    "SQL", "Tableau", "Power BI", "Looker", "Excel", "Google Analytics",
+    "Mixpanel", "Amplitude", "Segment", "dbt",
+    # Design
+    "Figma", "Sketch", "Adobe XD", "Photoshop", "Illustrator", "InDesign",
+    "After Effects", "Premiere Pro", "Canva",
+    # Product & Collaboration
+    "Agile", "Scrum", "Jira", "Confluence", "Notion", "Asana", "Linear",
+    # Marketing & Sales
+    "Salesforce", "HubSpot", "Marketo", "SEO", "SEM", "Google Ads",
+    "Meta Ads", "Copywriting", "Content Marketing", "Email Marketing",
+    # Finance & Legal
+    "Financial Modeling", "Valuation", "Bloomberg", "QuickBooks", "SAP",
+    # HR & People
+    "Workday", "BambooHR", "Greenhouse", "Lever",
 ]
 
 _YEAR_RANGE = re.compile(
@@ -26,11 +63,28 @@ _YEAR_RANGE = re.compile(
 )
 
 _TITLE_PATTERN = re.compile(
-    r'\b(software engineer|senior engineer|staff engineer|principal engineer|'
-    r'data scientist|ml engineer|machine learning engineer|'
-    r'product manager|engineering manager|tech lead|team lead|'
+    r'\b('
+    # Engineering
+    r'software engineer|senior engineer|staff engineer|principal engineer|'
     r'frontend developer|backend developer|full[\s\-]?stack developer|'
-    r'devops engineer|platform engineer|data engineer|analytics engineer)\b',
+    r'devops engineer|platform engineer|site reliability engineer|sre|'
+    r'mobile developer|ios developer|android developer|'
+    r'security engineer|cloud engineer|infrastructure engineer|'
+    # Data & ML
+    r'data scientist|ml engineer|machine learning engineer|ai engineer|'
+    r'data engineer|analytics engineer|data analyst|business analyst|'
+    r'research scientist|applied scientist|'
+    # Product & Design
+    r'product manager|product designer|ux designer|ui designer|'
+    r'ux researcher|design lead|'
+    # Leadership
+    r'engineering manager|tech lead|team lead|cto|vp of engineering|'
+    r'director of engineering|head of engineering|'
+    # Other
+    r'solutions architect|cloud architect|data architect|'
+    r'marketing manager|growth manager|sales manager|account executive|'
+    r'customer success manager|operations manager|finance manager'
+    r')\b',
     re.IGNORECASE,
 )
 

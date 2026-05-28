@@ -10,11 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 from database.models.base import Base
 from database.models.enums import JobSource, EmploymentType, WorkLocation
-from .job_cluster_memberships import JobClusterMembership
 
 if TYPE_CHECKING:
     from database.models.job_embeddings import JobEmbedding
-    from database.models.job_cluster_memberships import JobClusterMembership
     from core.collectors.base import RawJob
 
 
@@ -60,9 +58,6 @@ class Job(Base):
 
     embeddings: Mapped["JobEmbedding"] = relationship(
         "JobEmbedding", back_populates="job", cascade="all, delete-orphan"
-    )
-    memberships: Mapped[List["JobClusterMembership"]] = relationship(
-        "JobClusterMembership", back_populates="job", cascade="all, delete-orphan"
     )
 
     @classmethod

@@ -150,82 +150,137 @@ def ingest_jobs(
 
 
 # ---------------------------------------------------------------------------
-# ingest-resume command — Phase 3.01
+# ingest-resume command
 # ---------------------------------------------------------------------------
 
 def ingest_resume(
     file: Annotated[str, typer.Argument(help="Path to DOCX resume file")],
+    user_id: Annotated[str, typer.Option("--user-id", help="User identifier")] = "default",
+    top_n: Annotated[int, typer.Option("--top-n", help="Number of archetypes to match")] = 10,
 ) -> None:
-    """Parse a DOCX resume and store it in the CareerOS database."""
+    """Parse a DOCX resume, embed it, and match against role archetypes."""
+    import uuid
     from pathlib import Path
+    from sqlalchemy import select
 
     path = Path(file)
     if not path.exists():
         console.print(f"[bold red]File not found: {file}[/bold red]")
         raise typer.Exit(1)
     if path.suffix.lower() != ".docx":
-        console.print("[bold red]Only DOCX files are supported (PDF ignored for now).[/bold red]")
+        console.print("[bold red]Only DOCX files are supported.[/bold red]")
         raise typer.Exit(1)
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-        transient=True,
-    ) as progress:
-        progress.add_task("Parsing resume…", total=None)
+    # Step 1: Parse (sync — no DB, no event loop)
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                  console=console, transient=True) as p:
+        p.add_task("Parsing resume…", total=None)
         from core.resume_parser import parse_resume
         parsed = parse_resume(path)
 
+    # Steps 2-5: all async work in a single event loop
     from database.session import async_session
-    from database.models.resumes import Resume
-    from sqlalchemy import select
+    from database.models.user_resumes import UserResume
+    from core.embeddings.resume_embedder import ResumeEmbedder
+    from core.archetypes.matcher import match_resume as _match
+    from core.archetypes.ranker import save_rankings
 
-    async def _store() -> tuple[object, bool]:
+    async def _run_pipeline() -> tuple[str, bool, list]:
         resolved = str(path.resolve())
+
+        # Store
         async with async_session() as session:
             existing = await session.scalar(
-                select(Resume).where(Resume.file_path == resolved)
+                select(UserResume).where(UserResume.file_path == resolved)
             )
             if existing:
-                return existing.id, True
+                resume_id, already_existed = existing.id, True
+            else:
+                resume = UserResume(
+                    id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    file_name=path.name,
+                    file_path=resolved,
+                    raw_text=parsed.raw_text,
+                    parsed_skills=parsed.skills,
+                    parsed_titles=[parsed.current_or_last_role] if parsed.current_or_last_role else [],
+                    parsed_years_exp=int(parsed.experience_years) if parsed.experience_years else None,
+                    is_embedded=False,
+                )
+                session.add(resume)
+                await session.commit()
+                resume_id, already_existed = resume.id, False
 
-            resume = Resume(
-                file_name=path.name,
-                file_path=resolved,
-                raw_text=parsed.raw_text,
-                parsed_skills=parsed.skills,
-                parsed_years_exp=parsed.experience_years if parsed.experience_years else None,
-                source="cli",
-            )
-            session.add(resume)
-            await session.flush()
-            resume_id = resume.id
-        return resume_id, False
+        # Embed
+        ok = await ResumeEmbedder().embed_resume(resume_id)
+        if not ok:
+            raise RuntimeError("Embedding failed — check logs for details.")
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-        transient=True,
-    ) as progress:
-        progress.add_task("Storing resume in database…", total=None)
-        resume_id, already_existed = asyncio.run(_store())
+        # Match
+        matches = await _match(resume_id, top_n=top_n)
 
-    skills_str = ", ".join(parsed.skills) if parsed.skills else "none detected"
-    exp_str = f"~{parsed.experience_years:.1f} years" if parsed.experience_years else "unknown"
+        # Save rankings
+        if matches:
+            await save_rankings(resume_id, matches)
+
+        return resume_id, already_existed, matches
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+                  console=console, transient=True) as p:
+        p.add_task("Processing resume…", total=None)
+        try:
+            resume_id, already_existed, matches = asyncio.run(_run_pipeline())
+        except RuntimeError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(1)
 
     if already_existed:
-        console.print("\n[yellow]Resume already ingested (duplicate file path)[/yellow]")
-    else:
-        console.print("\n[bold green]Resume successfully ingested[/bold green]")
+        console.print("\n[yellow]Resume already ingested — re-running matching on existing record[/yellow]")
 
-    console.print(f"resume_id:  [cyan]{resume_id}[/cyan]")
-    console.print(f"skills:     [yellow]{skills_str}[/yellow]")
-    console.print(f"experience: [yellow]{exp_str}[/yellow]")
+    if not matches:
+        console.print("\n[yellow]No archetype centroids found — run 'lumia build-archetypes' first.[/yellow]\n")
+        console.print(f"resume_id: [cyan]{resume_id}[/cyan]")
+        raise typer.Exit(0)
+
+    # Print summary
+    console.print(f"\n[bold green]Resume processed[/bold green]  [cyan]{resume_id}[/cyan]")
     if parsed.current_or_last_role:
-        console.print(f"role:       [yellow]{parsed.current_or_last_role}[/yellow]")
-    console.print("status:     [green]ready_for_embedding[/green]\n")
+        console.print(f"Detected role:  [yellow]{parsed.current_or_last_role}[/yellow]")
+    if parsed.skills:
+        console.print(f"Detected skills: [yellow]{', '.join(parsed.skills[:8])}{'…' if len(parsed.skills) > 8 else ''}[/yellow]")
+    if parsed.experience_years:
+        console.print(f"Experience est: [yellow]~{parsed.experience_years:.0f} years[/yellow]")
+    console.print()
+
+    table = Table(title=f"Top {len(matches)} Archetype Matches", show_lines=True)
+    table.add_column("#", justify="right", style="dim", width=3)
+    table.add_column("Archetype", style="cyan", no_wrap=False)
+    table.add_column("Category", style="green")
+    table.add_column("Similarity", justify="right", width=10)
+    table.add_column("Fit", justify="center", width=9)
+    table.add_column("Skill Gaps (top 4)")
+
+    for i, m in enumerate(matches, start=1):
+        sim = m.similarity
+        if sim >= 0.75:
+            fit_color, fit_label = "green", "Strong"
+        elif sim >= 0.50:
+            fit_color, fit_label = "yellow", "Adjacent"
+        else:
+            fit_color, fit_label = "red", "Weak"
+        gaps = m.skill_gaps[:4]
+        gaps_str = ", ".join(gaps) + ("…" if len(m.skill_gaps) > 4 else "") if gaps else "—"
+        table.add_row(
+            str(i),
+            m.title,
+            m.category,
+            f"[{fit_color}]{sim:.3f}[/{fit_color}]",
+            f"[{fit_color}]{fit_label}[/{fit_color}]",
+            gaps_str,
+        )
+
+    console.print(table)
+    console.print()
 
 
 def _print_domain_table(counts: Counter) -> None:

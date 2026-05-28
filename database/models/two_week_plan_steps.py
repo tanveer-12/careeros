@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional, TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, Enum, Float, JSON, Integer, DateTime, Boolean
+from sqlalchemy import ForeignKey, String, Enum as SqlEnum, Float, JSON, Integer, DateTime, Boolean, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.models.base import Base
@@ -16,10 +16,10 @@ if TYPE_CHECKING:
 class TwoWeekPlanStep(Base):
     __tablename__ = "two_week_plan_steps"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    plan_id: Mapped[str] = mapped_column(String, ForeignKey("two_week_plans.id"), nullable=False)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    plan_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("two_week_plans.id"), nullable=False)
     week_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    step_type: Mapped[PlanStepType] = mapped_column(Enum(PlanStepType), nullable=False)
+    step_type: Mapped[PlanStepType] = mapped_column(SqlEnum(PlanStepType, name="plan_step_type", create_type=False), nullable=False)
 
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, nullable=False)
