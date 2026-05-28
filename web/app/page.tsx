@@ -176,225 +176,199 @@ function Navbar() {
 // ─── Hero ────────────────────────────────────────────────────────────────────
 
 function HeroSection() {
-  const [contentVisible, setContentVisible] = useState(false)
+  const [showContent, setShowContent] = useState(false)
   const router = useRouter()
 
-  // Reveal supporting content after LUMIA finishes writing
-  // Writing: delay 0.3s + duration 1.7s + 0.3s pause = 2.3s
+  // lumia writing: delay 0.2s + duration 2.0s = 2.2s → reveal content just before it ends
   useEffect(() => {
-    const t = setTimeout(() => setContentVisible(true), 2300)
+    const t = setTimeout(() => setShowContent(true), 2000)
     return () => clearTimeout(t)
   }, [])
 
   return (
-    <section id="hero" style={{
-      position:       'relative',
-      minHeight:      '100vh',
-      display:        'flex',
-      flexDirection:  'column',
-      alignItems:     'center',
-      justifyContent: 'center',
-      overflow:       'hidden',
-    }}>
+    <section id="hero" style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
+
       {/* Background image */}
       <div style={{
-        position:           'absolute',
-        inset:              0,
+        position:           'absolute', inset: 0,
         backgroundImage:    "url('/hero-bg.jpg')",
         backgroundSize:     'cover',
         backgroundPosition: 'center',
-        backgroundRepeat:   'no-repeat',
         backgroundColor:    C.dark,
         zIndex:             0,
       }} />
 
-      {/* Overlay — stronger so text is always legible */}
+      {/* Overlay: keep center clear (person with laptop), darken right for text legibility */}
       <div style={{
-        position:   'absolute',
-        inset:      0,
-        background: 'linear-gradient(180deg, rgba(8,20,20,0.62) 0%, rgba(8,20,20,0.52) 60%, rgba(8,20,20,0.68) 100%)',
-        zIndex:     1,
+        position: 'absolute', inset: 0, zIndex: 1,
+        background: 'linear-gradient(100deg, rgba(8,20,20,0.40) 0%, rgba(8,20,20,0.18) 38%, rgba(8,20,20,0.20) 55%, rgba(8,20,20,0.84) 100%)',
       }} />
 
-      {/* Content */}
+      {/* Bottom vignette so lumia text reads over the image */}
       <div style={{
-        position:      'relative',
-        zIndex:        2,
-        display:       'flex',
-        flexDirection: 'column',
-        alignItems:    'center',
-        textAlign:     'center',
-        padding:       '0 24px',
-        maxWidth:      '900px',
-      }}>
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        height: '42vw', zIndex: 1, pointerEvents: 'none',
+        background: 'linear-gradient(to top, rgba(8,20,20,0.65) 0%, transparent 100%)',
+      }} />
 
-        {/* ── LUMIA writing animation (Apple "hello" style) ── */}
-        <div style={{ position: 'relative', display: 'inline-block', marginBottom: '44px' }}>
+      {/* ── RIGHT PANEL: live pill + hook + subtext + CTAs ── */}
+      <motion.div
+        initial={{ opacity: 0, x: 32 }}
+        animate={showContent ? { opacity: 1, x: 0 } : { opacity: 0, x: 32 }}
+        transition={{ duration: 1.0, ease: EASE }}
+        style={{
+          position:      'absolute',
+          right:         'clamp(28px, 6vw, 88px)',
+          top:           '30%',
+          transform:     'translateY(-50%)',
+          zIndex:        3,
+          width:         'clamp(260px, 36%, 480px)',
+          display:       'flex',
+          flexDirection: 'column',
+          alignItems:    'flex-start',
+        }}
+      >
+        {/* Live pill */}
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: '8px',
+          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)',
+          borderRadius: '9999px', padding: '6px 16px', marginBottom: '20px',
+        }}>
+          <motion.span
+            animate={{ opacity: [1, 0.25, 1] }}
+            transition={{ duration: 1.6, repeat: Infinity }}
+            style={{ display: 'block', width: '7px', height: '7px', borderRadius: '50%', background: C.gold, flexShrink: 0 }}
+          />
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.92)' }}>
+            Live · 9,000+ jobs mapped today
+          </span>
+        </div>
+
+        {/* Hook headline */}
+        <h1 style={{
+          fontSize:     'clamp(1.8rem, 3.2vw, 3rem)',
+          fontFamily:   'var(--font-instrument), Georgia, serif',
+          fontWeight:   400,
+          color:        '#FFFFFF',
+          lineHeight:   1.18,
+          marginBottom: '16px',
+        }}>
+          No more 47 open tabs and zero replies.
+        </h1>
+
+        {/* Subtext */}
+        <p style={{
+          fontSize:     '1.0625rem',
+          color:        'rgba(255,255,255,0.82)',
+          lineHeight:   1.72,
+          marginBottom: '32px',
+          textShadow:   '0 1px 10px rgba(0,0,0,0.35)',
+        }}>
+          Lumia maps your resume against today&apos;s live job market and gives you a specific, weekly plan to get where you want to go.
+        </p>
+
+        {/* CTAs */}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => router.push('/upload')}
+            style={{
+              padding: '12px 28px', borderRadius: '9999px', fontSize: '14px', fontWeight: 500,
+              cursor: 'pointer', background: C.brand, color: '#FFFFFF', border: 'none',
+              fontFamily: 'inherit', transition: 'background 0.25s ease',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.brandHover }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = C.brand }}
+          >
+            Get started free →
+          </button>
+          <button
+            onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+            style={{
+              padding: '12px 28px', borderRadius: '9999px', fontSize: '14px', fontWeight: 400,
+              cursor: 'pointer', background: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.88)',
+              border: '1px solid rgba(255,255,255,0.22)', fontFamily: 'inherit', transition: 'background 0.25s ease',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.10)' }}
+          >
+            See how it works
+          </button>
+        </div>
+      </motion.div>
+
+      {/* ── LUMIA: cursive, full-width, writing left→right ── */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        zIndex: 2, overflow: 'hidden',
+      }}>
+        <div style={{ position: 'relative' }}>
           <motion.div
             initial={{ clipPath: 'inset(0 100% 0 0)' }}
             animate={{ clipPath: 'inset(0 0% 0 0)' }}
-            transition={{ duration: 1.7, ease: [0.16, 1, 0.3, 1], delay: 0.3 }}
+            transition={{ duration: 2.0, ease: [0.12, 0.9, 0.28, 1], delay: 0.2 }}
             style={{
-              fontSize:      'clamp(6rem, 14vw, 12rem)',
-              fontFamily:    'var(--font-instrument), Georgia, serif',
-              fontStyle:     'italic',
+              fontSize:      '30vw',
+              fontFamily:    'var(--font-dancing), cursive',
               fontWeight:    400,
-              color:         '#FFFFFF',
-              letterSpacing: '-0.02em',
-              lineHeight:    1,
+              color:         'rgba(255,255,255,0.93)',
+              letterSpacing: '0.01em',
+              lineHeight:    1.0,
+              whiteSpace:    'nowrap',
+              display:       'block',
               userSelect:    'none',
+              paddingLeft:   '0.5vw',
             }}
           >
-            Lumia
+            lumia
           </motion.div>
 
-          {/* Pen cursor that moves with the reveal */}
+          {/* Pen cursor moving with the reveal */}
           <motion.div
-            initial={{ left: '0%', opacity: 1 }}
-            animate={{ left: '104%', opacity: 0 }}
-            transition={{ duration: 1.7, ease: [0.16, 1, 0.3, 1], delay: 0.3 }}
+            initial={{ left: '0.5vw', opacity: 1 }}
+            animate={{ left: 'calc(100% + 8px)', opacity: 0 }}
+            transition={{ duration: 2.0, ease: [0.12, 0.9, 0.28, 1], delay: 0.2 }}
             style={{
               position:     'absolute',
-              top:          '6%',
-              height:       '88%',
-              width:        '2px',
-              background:   'rgba(255,255,255,0.80)',
+              top:          '12%',
+              height:       '76%',
+              width:        '3px',
+              background:   'rgba(255,255,255,0.92)',
               borderRadius: '2px',
-              boxShadow:    '0 0 10px rgba(255,255,255,0.55)',
+              boxShadow:    '0 0 18px rgba(255,255,255,0.70)',
             }}
           />
         </div>
-
-        {/* Supporting content — fades in after writing completes */}
-        <motion.div
-          initial={{ opacity: 0, y: 22 }}
-          animate={contentVisible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.9, ease: EASE }}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
-        >
-          {/* Live pill */}
-          <div style={{
-            display:      'inline-flex',
-            alignItems:   'center',
-            gap:          '8px',
-            background:   'rgba(255,255,255,0.08)',
-            border:       '1px solid rgba(255,255,255,0.14)',
-            borderRadius: '9999px',
-            padding:      '6px 16px',
-            marginBottom: '24px',
-          }}>
-            <motion.span
-              animate={{ opacity: [1, 0.25, 1] }}
-              transition={{ duration: 1.6, repeat: Infinity }}
-              style={{ display: 'block', width: '7px', height: '7px', borderRadius: '50%', background: C.gold, flexShrink: 0 }}
-            />
-            <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.90)' }}>
-              Live · 2,847 jobs mapped today
-            </span>
-          </div>
-
-          {/* Tagline */}
-          <h1 style={{
-            fontSize:     'clamp(1.6rem, 3.2vw, 2.6rem)',
-            fontFamily:   'var(--font-instrument), Georgia, serif',
-            fontWeight:   400,
-            color:        '#FFFFFF',
-            lineHeight:   1.2,
-            marginBottom: '16px',
-          }}>
-            Your career, mapped.
-          </h1>
-
-          {/* Subtext — higher contrast, text-shadow for legibility */}
-          <p style={{
-            fontSize:     '1.0625rem',
-            color:        'rgba(255,255,255,0.84)',
-            lineHeight:   1.7,
-            maxWidth:     '460px',
-            marginBottom: '36px',
-            textShadow:   '0 1px 12px rgba(0,0,0,0.4)',
-          }}>
-            Lumia maps your resume against today&apos;s live job market and gives you a specific, weekly plan to get where you want to go.
-          </p>
-
-          {/* CTA row */}
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            <button
-              onClick={() => router.push('/upload')}
-              style={{
-                padding:      '12px 30px',
-                borderRadius: '9999px',
-                fontSize:     '15px',
-                fontWeight:   500,
-                cursor:       'pointer',
-                background:   C.brand,
-                color:        '#FFFFFF',
-                border:       'none',
-                fontFamily:   'inherit',
-                transition:   'background 0.25s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = C.brandHover }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = C.brand }}
-            >
-              Get started free →
-            </button>
-            <button
-              onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-              style={{
-                padding:      '12px 30px',
-                borderRadius: '9999px',
-                fontSize:     '15px',
-                fontWeight:   400,
-                cursor:       'pointer',
-                background:   'rgba(255,255,255,0.10)',
-                color:        'rgba(255,255,255,0.88)',
-                border:       '1px solid rgba(255,255,255,0.22)',
-                fontFamily:   'inherit',
-                transition:   'background 0.25s ease',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.10)' }}
-            >
-              See how it works
-            </button>
-          </div>
-        </motion.div>
       </div>
 
-      {/* Scroll indicator — visible after content loads */}
+      {/* ── Scroll indicator: bottom-left, above lumia ── */}
       <motion.div
         initial={{ opacity: 0 }}
-        animate={contentVisible ? { opacity: 1 } : {}}
-        transition={{ duration: 0.7, delay: 0.4 }}
+        animate={showContent ? { opacity: 1 } : { opacity: 0 }}
+        transition={{ duration: 0.7, delay: 0.5 }}
+        onClick={() => document.getElementById('problem')?.scrollIntoView({ behavior: 'smooth' })}
         style={{
           position:      'absolute',
-          bottom:        '36px',
-          left:          '50%',
-          transform:     'translateX(-50%)',
-          zIndex:        2,
+          bottom:        'calc(30vw + 20px)',
+          left:          'clamp(28px, 5vw, 64px)',
+          zIndex:        4,
           display:       'flex',
-          flexDirection: 'column',
           alignItems:    'center',
-          gap:           '6px',
+          gap:           '8px',
           cursor:        'pointer',
         }}
-        onClick={() => document.getElementById('problem')?.scrollIntoView({ behavior: 'smooth' })}
       >
-        <span style={{
-          fontSize:      '11px',
-          letterSpacing: '0.14em',
-          textTransform: 'uppercase',
-          color:         'rgba(255,255,255,0.68)',
-          fontWeight:    500,
-        }}>
-          scroll to explore
-        </span>
         <motion.div
-          animate={{ y: [0, 7, 0] }}
+          animate={{ y: [0, 6, 0] }}
           transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
         >
-          <ChevronDown size={20} color="rgba(255,255,255,0.68)" />
+          <ChevronDown size={18} color="rgba(255,255,255,0.65)" />
         </motion.div>
+        <span style={{
+          fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.58)', fontWeight: 500,
+        }}>
+          scroll
+        </span>
       </motion.div>
     </section>
   )
