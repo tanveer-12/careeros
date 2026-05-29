@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion, useInView, useScroll, useTransform } from 'framer-motion'
+import {
+  motion, useInView, useScroll, useTransform,
+} from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
@@ -35,13 +37,6 @@ const TICKER_ITEMS = [
   'UX Design', 'Business Intelligence', 'DevOps', 'Marketing Analytics',
 ]
 
-const DOMAIN_BARS = [
-  { label: 'Software Eng', pct: 23 },
-  { label: 'Finance',      pct: 11 },
-  { label: 'Healthcare',   pct: 9  },
-  { label: 'Engineering',  pct: 7  },
-  { label: 'Consulting',   pct: 6  },
-]
 
 const HOW_STEPS = [
   {
@@ -60,6 +55,45 @@ const HOW_STEPS = [
     body:  'A week-by-week execution plan built specifically for your gaps and goals.',
   },
 ]
+
+// ─── Lumia SVG script animation ──────────────────────────────────────────────
+
+function LumiaScript() {
+  const [fontReady, setFontReady] = useState(false)
+
+  useEffect(() => {
+    document.fonts.ready.then(() => setFontReady(true))
+  }, [])
+
+  return (
+    <svg
+      viewBox="0 0 900 240"
+      style={{ display: 'block', margin: '0 auto', height: '15vw', width: 'auto', maxWidth: '70vw', overflow: 'visible' }}
+    >
+      <motion.text
+        x="450"
+        y="200"
+        textAnchor="middle"
+        fontFamily="var(--font-dancing), cursive"
+        fontSize={200}
+        fill="none"
+        stroke="rgba(255,255,255,0.94)"
+        strokeWidth={5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={8000}
+        initial={{ strokeDashoffset: 8000, opacity: 0 }}
+        animate={fontReady ? { strokeDashoffset: 0, opacity: 1 } : {}}
+        transition={{
+          strokeDashoffset: { duration: 33, ease: 'linear' },
+          opacity: { duration: 0.1 },
+        }}
+      >
+        Lumia
+      </motion.text>
+    </svg>
+  )
+}
 
 // ─── Navbar ──────────────────────────────────────────────────────────────────
 
@@ -87,10 +121,11 @@ function Navbar() {
       justifyContent: 'space-between',
       padding:        '0 clamp(24px, 5vw, 56px)',
       height:         '68px',
-      transition:     'background 0.35s ease, backdrop-filter 0.35s ease, border-color 0.35s ease',
-      background:     scrolled ? 'rgba(245,246,244,0.92)' : 'transparent',
-      backdropFilter: scrolled ? 'blur(20px)'             : 'none',
-      borderBottom:   scrolled ? '1px solid rgba(13,31,31,0.06)' : '1px solid transparent',
+      transition:     'background 0.4s ease',
+      background:     scrolled ? 'rgba(8,20,20,0.90)' : 'rgba(8,20,20,0.60)',
+      backdropFilter: 'blur(28px)',
+      WebkitBackdropFilter: 'blur(28px)',
+      borderBottom:   '1px solid rgba(255,255,255,0.14)',
     }}>
       {/* Wordmark */}
       <div
@@ -104,11 +139,10 @@ function Navbar() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.15 + i * 0.07 }}
             style={{
-              fontSize:   '19px',
-              fontWeight: 700,
+              fontSize:      '19px',
+              fontWeight:    700,
               letterSpacing: '0.06em',
-              color:      scrolled ? C.textPrimary : '#FFFFFF',
-              transition: 'color 0.35s ease',
+              color:         '#FFFFFF',
             }}
           >
             {l}
@@ -116,59 +150,71 @@ function Navbar() {
         ))}
       </div>
 
-      {/* Center links */}
-      <div style={{ display: 'flex', gap: '32px' }}>
-        {([
-          { label: 'Home',     target: 'top'           },
-          { label: 'Explore',  target: 'how-it-works'  },
-          { label: 'About',    target: 'market-signal' },
-          { label: 'Reach Us', target: 'cta'           },
-        ] as { label: string; target: string }[]).map(({ label, target }) => (
-          <button
-            key={label}
-            onClick={() => {
-              if (target === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return }
-              document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' })
-            }}
-            style={{
-              background:  'none',
-              border:      'none',
-              fontSize:    '14px',
-              fontWeight:  400,
-              cursor:      'pointer',
-              color:       scrolled ? C.textSecondary : 'rgba(255,255,255,0.60)',
-              transition:  'color 0.25s ease',
-              fontFamily:  'inherit',
-              padding:     '4px 0',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = scrolled ? C.textPrimary : '#FFFFFF' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = scrolled ? C.textSecondary : 'rgba(255,255,255,0.60)' }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Right side: links + CTA */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {([
+            { label: 'Home',     target: 'top'           },
+            { label: 'Explore',  target: 'how-it-works'  },
+            { label: 'About',    target: 'market-signal' },
+            { label: 'Reach Us', target: 'cta'           },
+          ] as { label: string; target: string }[]).map(({ label, target }) => (
+            <button
+              key={label}
+              onClick={() => {
+                if (target === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return }
+                document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' })
+              }}
+              style={{
+                background:           'rgba(255,255,255,0.10)',
+                border:               '1px solid rgba(255,255,255,0.22)',
+                borderRadius:         '9999px',
+                fontSize:             '14px',
+                fontWeight:           500,
+                cursor:               'pointer',
+                color:                '#FFFFFF',
+                transition:           'background 0.18s ease, border-color 0.18s ease',
+                fontFamily:           'inherit',
+                padding:              '6px 18px',
+                backdropFilter:       'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+              }}
+              onMouseEnter={(e) => {
+                const el = e.currentTarget
+                el.style.background  = 'rgba(255,255,255,0.22)'
+                el.style.borderColor = 'rgba(255,255,255,0.40)'
+              }}
+              onMouseLeave={(e) => {
+                const el = e.currentTarget
+                el.style.background  = 'rgba(255,255,255,0.10)'
+                el.style.borderColor = 'rgba(255,255,255,0.22)'
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-      {/* CTA */}
-      <button
-        onClick={() => router.push('/upload')}
-        style={{
-          padding:       '9px 22px',
-          borderRadius:  '9999px',
-          fontSize:      '14px',
-          fontWeight:    500,
-          cursor:        'pointer',
-          transition:    'background 0.35s ease',
-          background:    scrolled ? C.brand : 'rgba(255,255,255,0.10)',
-          color:         '#FFFFFF',
-          border:        scrolled ? 'none' : '1px solid rgba(255,255,255,0.15)',
-          fontFamily:    'inherit',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = scrolled ? C.brandHover : 'rgba(255,255,255,0.20)' }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = scrolled ? C.brand      : 'rgba(255,255,255,0.10)' }}
-      >
-        Get Started
-      </button>
+        <button
+          onClick={() => router.push('/upload')}
+          style={{
+            padding:       '9px 22px',
+            borderRadius:  '9999px',
+            fontSize:      '14px',
+            fontWeight:    500,
+            cursor:        'pointer',
+            transition:    'background 0.35s ease',
+            background:    C.brand,
+            color:         '#FFFFFF',
+            border:        'none',
+            fontFamily:    'inherit',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = C.brandHover }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = C.brand }}
+        >
+          Get Started
+        </button>
+      </div>
     </nav>
   )
 }
@@ -179,100 +225,123 @@ function HeroSection() {
   const [showContent, setShowContent] = useState(false)
   const router = useRouter()
 
-  // lumia writing: delay 0.2s + duration 2.0s = 2.2s → reveal content just before it ends
   useEffect(() => {
     const t = setTimeout(() => setShowContent(true), 2000)
     return () => clearTimeout(t)
   }, [])
 
   return (
-    <section id="hero" style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
-
-      {/* Background image */}
-      <div style={{
-        position:           'absolute', inset: 0,
-        backgroundImage:    "url('/hero-bg.jpg')",
-        backgroundSize:     'cover',
-        backgroundPosition: 'center',
-        backgroundColor:    C.dark,
-        zIndex:             0,
-      }} />
-
-      {/* Overlay: keep center clear (person with laptop), darken right for text legibility */}
-      <div style={{
-        position: 'absolute', inset: 0, zIndex: 1,
-        background: 'linear-gradient(100deg, rgba(8,20,20,0.40) 0%, rgba(8,20,20,0.18) 38%, rgba(8,20,20,0.20) 55%, rgba(8,20,20,0.84) 100%)',
-      }} />
-
-      {/* Bottom vignette so lumia text reads over the image */}
-      <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0,
-        height: '42vw', zIndex: 1, pointerEvents: 'none',
-        background: 'linear-gradient(to top, rgba(8,20,20,0.65) 0%, transparent 100%)',
-      }} />
-
-      {/* ── RIGHT PANEL: live pill + hook + subtext + CTAs ── */}
-      <motion.div
-        initial={{ opacity: 0, x: 32 }}
-        animate={showContent ? { opacity: 1, x: 0 } : { opacity: 0, x: 32 }}
-        transition={{ duration: 1.0, ease: EASE }}
+    <section
+      id="hero"
+      style={{ position: 'relative', height: '100vh', overflow: 'hidden' }}
+    >
+      {/* ── Background video ── */}
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
         style={{
-          position:      'absolute',
-          right:         'clamp(28px, 6vw, 88px)',
-          top:           '30%',
-          transform:     'translateY(-50%)',
-          zIndex:        3,
-          width:         'clamp(260px, 36%, 480px)',
-          display:       'flex',
-          flexDirection: 'column',
-          alignItems:    'flex-start',
+          position:   'absolute',
+          inset:      0,
+          width:      '100%',
+          height:     '100%',
+          objectFit:  'cover',
+          zIndex:     0,
         }}
+      >
+        <source src="/hero-bg.mp4" type="video/mp4" />
+      </video>
+
+      {/* Static gradient */}
+      <div style={{
+        position:   'absolute', inset: 0, zIndex: 1,
+        background: 'linear-gradient(105deg, rgba(8,20,20,0.35) 0%, rgba(8,20,20,0.12) 38%, rgba(8,20,20,0.12) 54%, rgba(8,20,20,0.86) 100%)',
+      }} />
+
+      {/* Warm ambient */}
+      <div style={{
+        position:   'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
+        background: 'radial-gradient(ellipse 60% 55% at 35% 60%, rgba(201,135,58,0.06) 0%, transparent 70%)',
+      }} />
+
+      {/* ── LUMIA SVG script ── */}
+      <div style={{
+        position:  'absolute',
+        top:       '30%',
+        left:      0,
+        right:     0,
+        transform: 'translateY(-50%)',
+        zIndex:    2,
+        textAlign: 'center',
+      }}>
+        <LumiaScript />
+      </div>
+
+      {/* ── RIGHT PANEL ── */}
+      <motion.div
+        style={{
+          position:             'absolute',
+          right:                'clamp(28px, 6vw, 88px)',
+          top:                  '64%',
+          transform:            'translateY(-50%)',
+          zIndex:               3,
+          width:                'clamp(280px, 36%, 460px)',
+          display:              'flex',
+          flexDirection:        'column',
+          alignItems:           'flex-start',
+          background:           'rgba(8,20,20,0.55)',
+          backdropFilter:       'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          borderRadius:         '20px',
+          border:               '1px solid rgba(255,255,255,0.10)',
+          padding:              '28px 32px',
+        }}
+        initial={{ opacity: 0 }}
+        animate={showContent ? { opacity: 1 } : { opacity: 0 }}
+        transition={{ duration: 0.9, delay: 0.6, ease: 'easeOut' }}
       >
         {/* Live pill */}
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: '8px',
-          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)',
-          borderRadius: '9999px', padding: '6px 16px', marginBottom: '20px',
+          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.14)',
+          borderRadius: '9999px', padding: '6px 16px', marginBottom: '18px',
         }}>
           <motion.span
             animate={{ opacity: [1, 0.25, 1] }}
             transition={{ duration: 1.6, repeat: Infinity }}
             style={{ display: 'block', width: '7px', height: '7px', borderRadius: '50%', background: C.gold, flexShrink: 0 }}
           />
-          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.92)' }}>
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.90)' }}>
             Live · 9,000+ jobs mapped today
           </span>
         </div>
 
-        {/* Hook headline */}
         <h1 style={{
-          fontSize:     'clamp(1.8rem, 3.2vw, 3rem)',
-          fontFamily:   'var(--font-instrument), Georgia, serif',
-          fontWeight:   400,
+          fontSize:     'clamp(1.4rem, 2.4vw, 2.2rem)',
+          fontWeight:   600,
           color:        '#FFFFFF',
-          lineHeight:   1.18,
-          marginBottom: '16px',
+          lineHeight:   1.22,
+          marginBottom: '14px',
+          textShadow:   '0 2px 16px rgba(0,0,0,0.6)',
         }}>
-          No more 47 open tabs and zero replies.
+          47 open tabs. Zero replies. There&apos;s a better way.
         </h1>
 
-        {/* Subtext */}
         <p style={{
-          fontSize:     '1.0625rem',
-          color:        'rgba(255,255,255,0.82)',
-          lineHeight:   1.72,
-          marginBottom: '32px',
-          textShadow:   '0 1px 10px rgba(0,0,0,0.35)',
+          fontSize:     '1rem',
+          color:        'rgba(255,255,255,0.92)',
+          lineHeight:   1.75,
+          marginBottom: '28px',
         }}>
           Lumia maps your resume against today&apos;s live job market and gives you a specific, weekly plan to get where you want to go.
         </p>
 
-        {/* CTAs */}
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button
             onClick={() => router.push('/upload')}
             style={{
-              padding: '12px 28px', borderRadius: '9999px', fontSize: '14px', fontWeight: 500,
+              padding: '11px 26px', borderRadius: '9999px', fontSize: '14px', fontWeight: 500,
               cursor: 'pointer', background: C.brand, color: '#FFFFFF', border: 'none',
               fontFamily: 'inherit', transition: 'background 0.25s ease',
             }}
@@ -284,91 +353,50 @@ function HeroSection() {
           <button
             onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
             style={{
-              padding: '12px 28px', borderRadius: '9999px', fontSize: '14px', fontWeight: 400,
-              cursor: 'pointer', background: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.88)',
-              border: '1px solid rgba(255,255,255,0.22)', fontFamily: 'inherit', transition: 'background 0.25s ease',
+              padding: '11px 26px', borderRadius: '9999px', fontSize: '14px', fontWeight: 500,
+              cursor: 'pointer', background: 'rgba(255,255,255,0.18)', color: '#FFFFFF',
+              border: '1px solid rgba(255,255,255,0.45)', fontFamily: 'inherit', transition: 'background 0.25s ease',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.10)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.30)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
           >
             See how it works
           </button>
         </div>
       </motion.div>
 
-      {/* ── LUMIA: cursive, full-width, writing left→right ── */}
-      <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0,
-        zIndex: 2, overflow: 'hidden',
-      }}>
-        <div style={{ position: 'relative' }}>
-          <motion.div
-            initial={{ clipPath: 'inset(0 100% 0 0)' }}
-            animate={{ clipPath: 'inset(0 0% 0 0)' }}
-            transition={{ duration: 2.0, ease: [0.12, 0.9, 0.28, 1], delay: 0.2 }}
-            style={{
-              fontSize:      '30vw',
-              fontFamily:    'var(--font-dancing), cursive',
-              fontWeight:    400,
-              color:         'rgba(255,255,255,0.93)',
-              letterSpacing: '0.01em',
-              lineHeight:    1.0,
-              whiteSpace:    'nowrap',
-              display:       'block',
-              userSelect:    'none',
-              paddingLeft:   '0.5vw',
-            }}
-          >
-            lumia
-          </motion.div>
-
-          {/* Pen cursor moving with the reveal */}
-          <motion.div
-            initial={{ left: '0.5vw', opacity: 1 }}
-            animate={{ left: 'calc(100% + 8px)', opacity: 0 }}
-            transition={{ duration: 2.0, ease: [0.12, 0.9, 0.28, 1], delay: 0.2 }}
-            style={{
-              position:     'absolute',
-              top:          '12%',
-              height:       '76%',
-              width:        '3px',
-              background:   'rgba(255,255,255,0.92)',
-              borderRadius: '2px',
-              boxShadow:    '0 0 18px rgba(255,255,255,0.70)',
-            }}
-          />
-        </div>
-      </div>
-
-      {/* ── Scroll indicator: bottom-left, above lumia ── */}
+      {/* ── Scroll indicator ── */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={showContent ? { opacity: 1 } : { opacity: 0 }}
-        transition={{ duration: 0.7, delay: 0.5 }}
+        transition={{ duration: 0.9, delay: 0.6 }}
         onClick={() => document.getElementById('problem')?.scrollIntoView({ behavior: 'smooth' })}
         style={{
           position:      'absolute',
-          bottom:        'calc(30vw + 20px)',
-          left:          'clamp(28px, 5vw, 64px)',
-          zIndex:        4,
+          bottom:        '32px',
+          left:          '50%',
+          transform:     'translateX(-50%)',
+          zIndex:        5,
           display:       'flex',
+          flexDirection: 'column',
           alignItems:    'center',
-          gap:           '8px',
+          gap:           '6px',
           cursor:        'pointer',
         }}
       >
+        <span style={{
+          fontSize: '11px', letterSpacing: '0.13em', textTransform: 'uppercase',
+          color: '#FFFFFF', fontWeight: 600, whiteSpace: 'nowrap',
+          textShadow: '0 1px 8px rgba(0,0,0,0.8)',
+        }}>
+          See where you stand
+        </span>
         <motion.div
           animate={{ y: [0, 6, 0] }}
-          transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          transition={{ duration: 1.9, repeat: Infinity, ease: 'easeInOut' }}
         >
-          <ChevronDown size={18} color="rgba(255,255,255,0.65)" />
+          <ChevronDown size={17} color="#FFFFFF" />
         </motion.div>
-        <span style={{
-          fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.58)', fontWeight: 500,
-        }}>
-          scroll
-        </span>
       </motion.div>
     </section>
   )
@@ -378,11 +406,24 @@ function HeroSection() {
 
 function TabsIllustration({ inView }: { inView: boolean }) {
   const [collapsed, setCollapsed] = useState(false)
+  const active = useRef(false)
 
   useEffect(() => {
     if (!inView) return
-    const t = setTimeout(() => setCollapsed(true), 1800)
-    return () => clearTimeout(t)
+    active.current = true
+
+    function runCycle() {
+      if (!active.current) return
+      setCollapsed(false)
+      setTimeout(() => {
+        if (!active.current) return
+        setCollapsed(true)
+        setTimeout(() => { if (active.current) runCycle() }, 2600)
+      }, 2400)
+    }
+
+    runCycle()
+    return () => { active.current = false }
   }, [inView])
 
   const TABS = [
@@ -397,22 +438,53 @@ function TabsIllustration({ inView }: { inView: boolean }) {
       animate={inView ? { opacity: 1, scale: 1 } : {}}
       transition={{ duration: 0.7, delay: 0.2 }}
       style={{
-        background:   'rgba(255,255,255,0.04)',
-        border:       '1px solid rgba(255,255,255,0.10)',
-        borderRadius: '16px',
-        padding:      '28px',
-        aspectRatio:  '4/3',
-        display:      'flex',
-        flexDirection:'column',
-        gap:          '12px',
+        background:    'linear-gradient(145deg, #FFFFFF 0%, rgba(245,246,244,0.8) 100%)',
+        border:        '1px solid rgba(13,31,31,0.10)',
+        borderRadius:  '20px',
+        padding:       '28px',
+        aspectRatio:   '4/3',
+        display:       'flex',
+        flexDirection: 'column',
+        gap:           '12px',
+        boxShadow:     '0 8px 40px rgba(13,31,31,0.10), 0 2px 8px rgba(13,31,31,0.05)',
+        position:      'relative',
+        overflow:      'hidden',
       }}
     >
-      {/* Browser chrome bar */}
-      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-        {[0.15, 0.10, 0.07].map((op, i) => (
-          <div key={i} style={{ width: '9px', height: '9px', borderRadius: '50%', background: `rgba(255,255,255,${op})` }} />
+      {/* Subtle bottom glow that transitions */}
+      <div style={{
+        position:      'absolute',
+        bottom:        0,
+        left:          0,
+        right:         0,
+        height:        '45%',
+        background:    collapsed
+          ? 'linear-gradient(to top, rgba(10,124,110,0.08), transparent)'
+          : 'linear-gradient(to top, rgba(201,135,58,0.06), transparent)',
+        pointerEvents: 'none',
+        transition:    'background 1s ease',
+      }} />
+
+      {/* Browser chrome */}
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', position: 'relative' }}>
+        {[0.55, 0.35, 0.20].map((op, i) => (
+          <div key={i} style={{ width: '9px', height: '9px', borderRadius: '50%', background: `rgba(13,31,31,${op})` }} />
         ))}
-        <div style={{ flex: 1, height: '22px', marginLeft: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }} />
+        <div style={{ flex: 1, height: '22px', marginLeft: '10px', background: 'rgba(13,31,31,0.05)', borderRadius: '4px' }} />
+        <div style={{
+          fontSize:   '10px',
+          fontWeight: 600,
+          color:      collapsed ? C.brand : C.gold,
+          background: collapsed ? 'rgba(10,124,110,0.10)' : 'rgba(201,135,58,0.12)',
+          border:     `1px solid ${collapsed ? 'rgba(10,124,110,0.25)' : 'rgba(201,135,58,0.25)'}`,
+          borderRadius: '9999px',
+          padding:    '2px 9px',
+          transition: 'all 0.6s ease',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}>
+          {collapsed ? '1 signal' : '47 tabs'}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -440,16 +512,23 @@ function TabsIllustration({ inView }: { inView: boolean }) {
           animate={{ scaleX: 1, opacity: 1 }}
           transition={{ duration: 0.9, delay: 0.5 }}
           style={{
-            height:          '2px',
-            background:      `linear-gradient(90deg, ${C.brand}, ${C.gold})`,
+            height:          '3px',
+            background:      `linear-gradient(90deg, ${C.brand}, ${C.gold}, ${C.brand})`,
             borderRadius:    '2px',
             transformOrigin: 'left',
           }}
         />
       )}
 
-      <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.30)', fontFamily: 'monospace', textAlign: 'center' }}>
-        {collapsed ? '1 clear signal' : '47 open tabs'}
+      <div style={{
+        fontSize:   '12px',
+        color:      collapsed ? C.brand : 'rgba(13,31,31,0.45)',
+        fontFamily: 'monospace',
+        textAlign:  'center',
+        fontWeight: collapsed ? 600 : 400,
+        transition: 'color 0.5s ease',
+      }}>
+        {collapsed ? '✓ 1 clear signal' : '47 open tabs, 0 clarity'}
       </div>
     </motion.div>
   )
@@ -457,11 +536,11 @@ function TabsIllustration({ inView }: { inView: boolean }) {
 
 function ProblemSection() {
   const ref = useRef<HTMLDivElement>(null)
-  const inView = useInView(ref, { once: true, margin: '-100px' })
+  const inView = useInView(ref, { once: false, margin: '-100px' })
 
   return (
     <section id="problem" style={{
-      background:  C.dark,
+      background:  C.base,
       minHeight:   '100vh',
       display:     'flex',
       alignItems:  'center',
@@ -477,22 +556,20 @@ function ProblemSection() {
         width:                '100%',
       }}>
         <div ref={ref}>
-          {/* Big headline */}
           <div style={{ marginBottom: '48px' }}>
             <div style={{
               fontSize:   'clamp(3rem, 6vw, 6rem)',
-              fontFamily: 'var(--font-instrument), Georgia, serif',
+              fontFamily: 'inherit',
               fontWeight: 400,
               lineHeight: 1.05,
-              color:      '#FFFFFF',
+              color:      C.textPrimary,
             }}>
               Job searching
             </div>
             <div style={{
               fontSize:   'clamp(3rem, 6vw, 6rem)',
-              fontFamily: 'var(--font-instrument), Georgia, serif',
-              fontWeight: 400,
-              fontStyle:  'italic',
+              fontFamily: 'inherit',
+              fontWeight: 700,
               lineHeight: 1.05,
               color:      C.gold,
             }}>
@@ -500,7 +577,6 @@ function ProblemSection() {
             </div>
           </div>
 
-          {/* Staggered bullet lines */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {PROBLEM_LINES.map((line, i) => (
               <motion.div
@@ -517,7 +593,7 @@ function ProblemSection() {
                   marginTop: '12px',
                   flexShrink: 0,
                 }} />
-                <span style={{ fontSize: '18px', color: '#FFFFFF', fontWeight: 300, lineHeight: 1.6 }}>
+                <span style={{ fontSize: '18px', color: C.textPrimary, fontWeight: 400, lineHeight: 1.6 }}>
                   {line}
                 </span>
               </motion.div>
@@ -628,7 +704,6 @@ function StepIllustration({ index, inView }: { index: number; inView: boolean })
     )
   }
 
-  // Step 3 — plan
   const items = [
     { week: 'Week 1', tasks: ['Build portfolio project', 'Learn TypeScript patterns'] },
     { week: 'Week 2', tasks: ['System design practice', 'Apply to 3 target roles'] },
@@ -688,76 +763,98 @@ function StepIllustration({ index, inView }: { index: number; inView: boolean })
   )
 }
 
-function StepRow({ step, index }: { step: typeof HOW_STEPS[0]; index: number }) {
+function StepCard({ step, index }: { step: typeof HOW_STEPS[0]; index: number }) {
   const ref = useRef<HTMLDivElement>(null)
-  const inView = useInView(ref, { once: true, margin: '-80px' })
+  const inView = useInView(ref, { once: true, margin: '-60px' })
+  const accents = [C.brand, C.gold, C.textSecondary] as const
+  const accent = accents[index % accents.length]
 
   return (
     <motion.div
       ref={ref}
-      initial={{ opacity: 0, x: -24 }}
-      animate={inView ? { opacity: 1, x: 0 } : {}}
-      transition={{ duration: 0.7, ease: EASE }}
+      initial={{ opacity: 0, y: 50 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.75, delay: index * 0.15, ease: EASE }}
+      whileHover={{ y: -10, boxShadow: '0 28px 64px rgba(13,31,31,0.14)' }}
       style={{
-        display:             'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap:                 '60px',
-        padding:             '60px 0 60px 44px',
-        borderBottom:        index < HOW_STEPS.length - 1
-          ? '1px solid rgba(13,31,31,0.08)' : 'none',
-        position: 'relative',
+        background:    C.surface,
+        border:        '1px solid rgba(13,31,31,0.07)',
+        borderRadius:  '24px',
+        padding:       '40px 32px 36px',
+        position:      'relative',
+        overflow:      'hidden',
+        boxShadow:     '0 4px 24px rgba(13,31,31,0.06)',
+        display:       'flex',
+        flexDirection: 'column',
+        gap:           '24px',
+        transition:    'box-shadow 0.3s ease',
       }}
     >
-      {/* Gold dot on the timeline */}
-      <div style={{
-        position:     'absolute',
-        left:         '-5px',
-        top:          '74px',
-        width:        '12px',
-        height:       '12px',
-        borderRadius: '50%',
-        background:   C.gold,
-        border:       `2px solid ${C.base}`,
-      }} />
+      {/* Top accent sweep */}
+      <motion.div
+        initial={{ scaleX: 0 }}
+        animate={inView ? { scaleX: 1 } : {}}
+        transition={{ duration: 0.7, delay: index * 0.15 + 0.3 }}
+        style={{
+          height:          '3px',
+          background:      `linear-gradient(90deg, ${accent}, transparent)`,
+          borderRadius:    '2px',
+          transformOrigin: 'left',
+          position:        'absolute',
+          top:             0,
+          left:            0,
+          right:           0,
+        }}
+      />
 
-      <div style={{ position: 'relative' }}>
-        {/* Ghost number */}
-        <span style={{
-          position:     'absolute',
-          top:          '-20px',
-          left:         '-10px',
-          fontSize:     '160px',
-          fontFamily:   'var(--font-instrument), Georgia, serif',
-          fontWeight:   700,
-          lineHeight:   1,
-          color:        'rgba(13,31,31,0.035)',
-          userSelect:   'none',
-          letterSpacing:'-0.04em',
-          pointerEvents:'none',
-        }}>
-          {step.num}
+      {/* Ghost number */}
+      <span style={{
+        position:      'absolute',
+        right:         '-8px',
+        top:           '-16px',
+        fontSize:      '140px',
+        fontWeight:    700,
+        lineHeight:    1,
+        color:         'rgba(13,31,31,0.025)',
+        userSelect:    'none',
+        letterSpacing: '-0.04em',
+        pointerEvents: 'none',
+      }}>
+        {step.num}
+      </span>
+
+      {/* Step chip */}
+      <div style={{
+        display:      'inline-flex',
+        alignItems:   'center',
+        gap:          '7px',
+        background:   `${accent}18`,
+        border:       `1px solid ${accent}35`,
+        borderRadius: '9999px',
+        padding:      '5px 14px',
+        width:        'fit-content',
+      }}>
+        <motion.span
+          animate={{ scale: [1, 1.4, 1] }}
+          transition={{ duration: 2, repeat: Infinity, delay: index * 0.6 }}
+          style={{ width: '6px', height: '6px', borderRadius: '50%', background: accent, display: 'block', flexShrink: 0 }}
+        />
+        <span style={{ fontSize: '11px', fontWeight: 700, color: accent, letterSpacing: '0.08em' }}>
+          STEP {step.num}
         </span>
-        <h3 style={{
-          fontSize:   '2.5rem',
-          fontFamily: 'var(--font-instrument), Georgia, serif',
-          fontWeight: 400,
-          color:      C.textPrimary,
-          lineHeight: 1.15,
-          marginBottom: '16px',
-          position:   'relative',
-        }}>
+      </div>
+
+      {/* Text */}
+      <div>
+        <h3 style={{ fontSize: '1.55rem', fontWeight: 400, color: C.textPrimary, lineHeight: 1.2, marginBottom: '10px', fontFamily: 'inherit' }}>
           {step.title}
         </h3>
-        <p style={{
-          fontSize:   '1.125rem',
-          color:      C.textSecondary,
-          lineHeight: 1.75,
-          maxWidth:   '400px',
-        }}>
+        <p style={{ fontSize: '0.95rem', color: C.textSecondary, lineHeight: 1.75 }}>
           {step.body}
         </p>
       </div>
 
+      {/* Illustration */}
       <StepIllustration index={index} inView={inView} />
     </motion.div>
   )
@@ -765,9 +862,15 @@ function StepRow({ step, index }: { step: typeof HOW_STEPS[0]; index: number }) 
 
 function HowItWorksSection() {
   return (
-    <section id="how-it-works" style={{ background: C.base, padding: '120px clamp(24px, 7vw, 96px)' }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        <div style={{ marginBottom: '80px' }}>
+    <section id="how-it-works" style={{ background: C.surface, padding: '120px clamp(24px, 7vw, 96px)' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7, ease: EASE }}
+          style={{ marginBottom: '72px', textAlign: 'center' }}
+        >
           <p style={{
             fontSize:      '11px',
             fontWeight:    600,
@@ -780,33 +883,149 @@ function HowItWorksSection() {
           </p>
           <h2 style={{
             fontSize:   'clamp(2.5rem, 4vw, 4rem)',
-            fontFamily: 'var(--font-instrument), Georgia, serif',
+            fontFamily: 'inherit',
             fontWeight: 400,
             color:      C.textPrimary,
             lineHeight: 1.1,
           }}>
             Three steps to clarity.
           </h2>
-        </div>
+        </motion.div>
 
-        <div style={{ position: 'relative' }}>
-          {/* Vertical timeline line */}
-          <div style={{
-            position:   'absolute',
-            left:       0,
-            top:        0,
-            bottom:     0,
-            width:      '2px',
-            background: `linear-gradient(to bottom, ${C.brand}, ${C.gold})`,
-          }} />
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {HOW_STEPS.map((step, i) => (
-              <StepRow key={i} step={step} index={i} />
-            ))}
-          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+          {HOW_STEPS.map((step, i) => (
+            <StepCard key={i} step={step} index={i} />
+          ))}
         </div>
       </div>
     </section>
+  )
+}
+
+// ─── Knowledge Graph ─────────────────────────────────────────────────────────
+
+function KnowledgeGraph() {
+  const ref    = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: '-80px' })
+
+  const domains = [
+    { name: 'Software',    color: C.brand,   cx: 340, cy: 88,  r: 38 },
+    { name: 'Finance',     color: C.gold,    cx: 375, cy: 228, r: 30 },
+    { name: 'Healthcare',  color: '#5F9E72', cx: 298, cy: 358, r: 26 },
+    { name: 'Design',      color: '#9B6BC9', cx: 112, cy: 358, r: 28 },
+    { name: 'Data Science',color: '#3B87D0', cx: 38,  cy: 198, r: 34 },
+    { name: 'Marketing',   color: '#C97B3A', cx: 118, cy: 68,  r: 25 },
+  ]
+  const px = 210, py = 212
+
+  return (
+    <div ref={ref} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <svg viewBox="0 0 420 430" style={{ width: '100%', maxWidth: '400px', height: 'auto' }}>
+        {/* Orbit rings */}
+        {[130, 165].map((r, i) => (
+          <circle
+            key={i} cx={px} cy={py} r={r}
+            fill="none"
+            stroke="rgba(13,31,31,0.05)"
+            strokeWidth="1"
+            strokeDasharray="4 8"
+          />
+        ))}
+
+        {/* Connection lines */}
+        {domains.map((d, i) => (
+          <motion.line
+            key={`l${i}`}
+            x1={px} y1={py} x2={d.cx} y2={d.cy}
+            stroke={d.color}
+            strokeWidth="1.5"
+            strokeOpacity="0.40"
+            strokeDasharray="6 5"
+            initial={{ pathLength: 0 }}
+            animate={inView ? { pathLength: 1 } : {}}
+            transition={{ duration: 0.7, delay: 0.4 + i * 0.08 }}
+          />
+        ))}
+
+        {/* Domain bubbles */}
+        {domains.map((d, i) => (
+          <g key={`d${i}`}>
+            <motion.circle
+              cx={d.cx} cy={d.cy} r={d.r + 10}
+              fill={d.color} fillOpacity="0.06"
+              stroke={d.color} strokeWidth="1" strokeOpacity="0.15"
+              initial={{ scale: 0 }}
+              animate={inView ? { scale: 1 } : {}}
+              transition={{ duration: 0.5, delay: 0.7 + i * 0.1 }}
+            />
+            <motion.circle
+              cx={d.cx} cy={d.cy} r={d.r}
+              fill={d.color} fillOpacity="0.14"
+              stroke={d.color} strokeWidth="1.5" strokeOpacity="0.60"
+              initial={{ scale: 0 }}
+              animate={inView ? { scale: 1 } : {}}
+              transition={{ duration: 0.5, delay: 0.6 + i * 0.1, type: 'spring', stiffness: 180 }}
+            />
+            <motion.text
+              x={d.cx} y={d.cy + 4}
+              textAnchor="middle"
+              fontSize={d.r >= 34 ? 9 : 8}
+              fill={d.color}
+              fontWeight="700"
+              letterSpacing="0.04em"
+              initial={{ opacity: 0 }}
+              animate={inView ? { opacity: 1 } : {}}
+              transition={{ duration: 0.4, delay: 0.9 + i * 0.08 }}
+            >
+              {d.name}
+            </motion.text>
+          </g>
+        ))}
+
+        {/* Person — pulse ring */}
+        <motion.circle
+          cx={px} cy={py} r={50}
+          fill="none" stroke={C.gold} strokeWidth="1" strokeOpacity="0.30"
+          animate={{ r: [50, 60, 50], opacity: [0.30, 0.08, 0.30] }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        {/* Person — base circle */}
+        <motion.circle
+          cx={px} cy={py} r={32}
+          fill={C.goldSubtle} stroke={C.gold} strokeWidth="2"
+          initial={{ scale: 0 }}
+          animate={inView ? { scale: 1 } : {}}
+          transition={{ duration: 0.6, delay: 0.3, type: 'spring', stiffness: 200 }}
+        />
+        {/* Head */}
+        <motion.circle
+          cx={px} cy={py - 13} r={8}
+          fill={C.gold}
+          initial={{ scale: 0 }}
+          animate={inView ? { scale: 1 } : {}}
+          transition={{ duration: 0.4, delay: 0.5 }}
+        />
+        {/* Body */}
+        <motion.path
+          d={`M${px} ${py - 5} L${px - 10} ${py + 17} M${px} ${py - 5} L${px + 10} ${py + 17}`}
+          stroke={C.gold} strokeWidth="2.5" strokeLinecap="round" fill="none"
+          initial={{ pathLength: 0 }}
+          animate={inView ? { pathLength: 1 } : {}}
+          transition={{ duration: 0.4, delay: 0.6 }}
+        />
+        {/* You label */}
+        <motion.text
+          x={px} y={py + 52}
+          textAnchor="middle" fontSize="9"
+          fill={C.gold} fontWeight="700" letterSpacing="0.1em"
+          initial={{ opacity: 0 }}
+          animate={inView ? { opacity: 1 } : {}}
+          transition={{ delay: 0.8 }}
+        >
+          YOU
+        </motion.text>
+      </svg>
+    </div>
   )
 }
 
@@ -814,36 +1033,43 @@ function HowItWorksSection() {
 
 function Counter({ to, suffix = '' }: { to: number; suffix?: string }) {
   const ref    = useRef<HTMLSpanElement>(null)
-  const inView = useInView(ref, { once: true })
+  const inView = useInView(ref, { once: false })
+  const active = useRef(false)
 
   useEffect(() => {
-    if (!inView || !ref.current) return
-    let start: number | null = null
-    const duration = 1500
-    let raf: number
+    if (!inView) return
+    active.current = true
 
-    function tick(ts: number) {
-      if (!start) start = ts
-      const t = Math.min((ts - start) / duration, 1)
-      const eased = 1 - Math.pow(1 - t, 3)
-      if (ref.current) ref.current.textContent = Math.round(eased * to).toLocaleString() + suffix
-      if (t < 1) raf = requestAnimationFrame(tick)
+    function animate(ts0: number) {
+      function tick(ts: number) {
+        if (!active.current) return
+        const t = Math.min((ts - ts0) / 1800, 1)
+        const eased = 1 - Math.pow(1 - t, 3)
+        if (ref.current) ref.current.textContent = Math.round(eased * to).toLocaleString() + suffix
+        if (t < 1) {
+          requestAnimationFrame(tick)
+        } else {
+          setTimeout(() => {
+            if (!active.current) return
+            if (ref.current) ref.current.textContent = '0' + suffix
+            requestAnimationFrame(animate)
+          }, 3500)
+        }
+      }
+      tick(ts0)
     }
 
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
+    requestAnimationFrame(animate)
+    return () => { active.current = false }
   }, [inView, to, suffix])
 
   return <span ref={ref}>0{suffix}</span>
 }
 
 function MarketSignalSection() {
-  const barsRef    = useRef<HTMLDivElement>(null)
-  const barsInView = useInView(barsRef, { once: true })
-
   return (
     <section id="market-signal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: '100vh' }}>
-      {/* Left — dark */}
+      {/* Left — dark, stats + rolling ticker */}
       <div style={{
         background:    C.dark,
         padding:       '80px clamp(24px, 5vw, 72px)',
@@ -851,6 +1077,7 @@ function MarketSignalSection() {
         flexDirection: 'column',
         justifyContent:'center',
       }}>
+        {/* Live indicator */}
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '48px' }}>
           <motion.span
             animate={{ opacity: [1, 0.25, 1] }}
@@ -862,19 +1089,20 @@ function MarketSignalSection() {
           </span>
         </div>
 
+        {/* Rolling stats */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', marginBottom: '56px' }}>
           {[
-            { to: 2847, suffix: '',   label: 'jobs ingested in the last 24 hours',          color: '#FFFFFF' },
-            { to: 14,   suffix: '',   label: 'role clusters mapped across all industries',   color: '#FFFFFF' },
-            { to: 89,   suffix: '%',  label: 'average match accuracy',                       color: C.gold   },
+            { to: 2847, suffix: '',  label: 'jobs ingested in the last 24 hours',        color: '#FFFFFF' },
+            { to: 14,   suffix: '',  label: 'role clusters mapped across all industries', color: '#FFFFFF' },
+            { to: 89,   suffix: '%', label: 'average match accuracy',                     color: C.gold   },
           ].map((item, i) => (
             <div key={i}>
               <div style={{
-                fontSize:   'clamp(2.5rem, 4vw, 4.5rem)',
-                fontFamily: 'var(--font-instrument), Georgia, serif',
-                fontWeight: 400,
-                color:      item.color,
-                lineHeight: 1,
+                fontSize:     'clamp(2.5rem, 4vw, 4.5rem)',
+                fontFamily:   'inherit',
+                fontWeight:   400,
+                color:        item.color,
+                lineHeight:   1,
                 marginBottom: '6px',
               }}>
                 <Counter to={item.to} suffix={item.suffix} />
@@ -886,22 +1114,29 @@ function MarketSignalSection() {
           ))}
         </div>
 
-        {/* Ticker */}
-        <div style={{ overflow: 'hidden' }}>
-          <div className="animate-ticker" style={{ display: 'flex', width: 'max-content' }}>
+        {/* Ticker belt — white background, dark text, bigger font */}
+        <div style={{
+          overflow:     'hidden',
+          background:   'rgba(255,255,255,0.97)',
+          borderRadius: '12px',
+          border:       '1px solid rgba(255,255,255,0.85)',
+          padding:      '11px 0',
+          boxShadow:    '0 2px 16px rgba(0,0,0,0.22)',
+        }}>
+          <div className="animate-ticker" style={{ display: 'flex', width: 'max-content', alignItems: 'center' }}>
             {[...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
-              <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', padding: '0 18px' }}>
-                <span style={{ fontSize: '12px', fontFamily: 'monospace', color: 'rgba(255,255,255,0.30)', whiteSpace: 'nowrap' }}>
+              <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', padding: '0 22px' }}>
+                <span style={{ fontSize: '15px', fontWeight: 500, color: C.textPrimary, whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
                   {item}
                 </span>
-                <span style={{ color: C.gold, fontSize: '8px' }}>·</span>
+                <span style={{ color: C.gold, fontSize: '13px', fontWeight: 700 }}>·</span>
               </span>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Right — light */}
+      {/* Right — light, knowledge graph */}
       <div style={{
         background:    C.base,
         padding:       '80px clamp(24px, 5vw, 72px)',
@@ -909,57 +1144,32 @@ function MarketSignalSection() {
         flexDirection: 'column',
         justifyContent:'center',
       }}>
-        <h2 style={{
-          fontSize:   'clamp(2rem, 3vw, 3rem)',
-          fontFamily: 'var(--font-instrument), Georgia, serif',
-          fontWeight: 400,
-          color:      C.textPrimary,
-          lineHeight: 1.15,
-          marginBottom:'20px',
-        }}>
-          The market, live.
-        </h2>
-        <p style={{
-          fontSize:    '1rem',
-          color:       C.textSecondary,
-          lineHeight:  1.75,
-          maxWidth:    '400px',
-          marginBottom:'48px',
-        }}>
-          Lumia ingests fresh job postings every 24 hours across every industry. Not last week&apos;s data.
-          Not a keyword match. Today&apos;s actual market signal.
-        </p>
-
-        {/* Domain bars */}
-        <div ref={barsRef} style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '380px' }}>
-          {DOMAIN_BARS.map((d, i) => (
-            <div key={d.label}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-                <span style={{ fontSize: '13px', color: C.textSecondary }}>{d.label}</span>
-                <span style={{ fontSize: '13px', color: i === 0 ? C.brand : C.textSecondary, fontWeight: i === 0 ? 600 : 400 }}>
-                  {d.pct}%
-                </span>
-              </div>
-              <div style={{
-                height:       '6px',
-                background:   'rgba(13,31,31,0.06)',
-                borderRadius: '9999px',
-                overflow:     'hidden',
-              }}>
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={barsInView ? { width: `${(d.pct / 23) * 100}%` } : {}}
-                  transition={{ duration: 0.85, delay: 0.1 + i * 0.12, ease: EASE }}
-                  style={{
-                    height:       '100%',
-                    background:   i === 0 ? C.brand : 'rgba(10,124,110,0.38)',
-                    borderRadius: '9999px',
-                  }}
-                />
-              </div>
-            </div>
-          ))}
+        <div style={{ marginBottom: '12px' }}>
+          <p style={{
+            fontSize:      '11px',
+            fontWeight:    600,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color:         C.brand,
+            marginBottom:  '10px',
+          }}>
+            YOUR CAREER LANDSCAPE
+          </p>
+          <h2 style={{
+            fontSize:     'clamp(1.6rem, 2.5vw, 2.2rem)',
+            fontFamily:   'inherit',
+            fontWeight:   400,
+            color:        C.textPrimary,
+            lineHeight:   1.2,
+            marginBottom: '8px',
+          }}>
+            Every domain,<br />mapped to you.
+          </h2>
+          <p style={{ fontSize: '13px', color: C.textSecondary, lineHeight: 1.7, maxWidth: '320px' }}>
+            See which clusters match your background — and which ones are one skill away.
+          </p>
         </div>
+        <KnowledgeGraph />
       </div>
     </section>
   )
@@ -980,7 +1190,7 @@ function ProductFlowSection() {
       <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
         <h2 style={{
           fontSize:     'clamp(2rem, 4vw, 3.5rem)',
-          fontFamily:   'var(--font-instrument), Georgia, serif',
+          fontFamily:   'inherit',
           fontWeight:   400,
           color:        C.textPrimary,
           textAlign:    'center',
@@ -990,9 +1200,7 @@ function ProductFlowSection() {
           What happens after you upload.
         </h2>
 
-        {/* Stacked panels with parallax */}
         <div style={{ position: 'relative', height: '420px', maxWidth: '720px', margin: '0 auto 48px' }}>
-          {/* Panel 1 — back, blurred */}
           <motion.div style={{ y: y1, position: 'absolute', inset: 0, zIndex: 1 }}>
             <div style={{
               background:   C.surface,
@@ -1019,7 +1227,6 @@ function ProductFlowSection() {
             </div>
           </motion.div>
 
-          {/* Panel 2 — middle */}
           <motion.div style={{ y: y2, position: 'absolute', inset: '22px 22px 0', zIndex: 2 }}>
             <div style={{
               background:   C.surface,
@@ -1043,7 +1250,6 @@ function ProductFlowSection() {
             </div>
           </motion.div>
 
-          {/* Panel 3 — front, sharp */}
           <motion.div style={{ y: y3, position: 'absolute', inset: '44px 44px 0', zIndex: 3 }}>
             <div style={{
               background:   C.surface,
@@ -1121,7 +1327,6 @@ function CtaSection() {
       position:      'relative',
       overflow:      'hidden',
     }}>
-      {/* Radial glow */}
       <div style={{
         position:        'absolute',
         top:             '50%',
@@ -1143,7 +1348,7 @@ function CtaSection() {
       >
         <h2 style={{
           fontSize:     'clamp(2.5rem, 5vw, 4.5rem)',
-          fontFamily:   'var(--font-instrument), Georgia, serif',
+          fontFamily:   'inherit',
           fontWeight:   400,
           color:        '#FFFFFF',
           marginBottom: '20px',
@@ -1197,7 +1402,6 @@ function CtaSection() {
         </p>
       </motion.div>
 
-      {/* Watermark wordmark */}
       <div style={{
         position:  'absolute',
         bottom:    '48px',
@@ -1225,7 +1429,7 @@ function CtaSection() {
 
 export default function LandingPage() {
   return (
-    <div style={{ background: C.base }}>
+    <div style={{ background: C.base, overflowX: 'hidden' }}>
       <Navbar />
       <HeroSection />
       <ProblemSection />
